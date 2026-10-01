@@ -1,0 +1,56 @@
+# macOS and Windows metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# IDE settings and local project state
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+nbproject/private/
+
+# Java, Maven, and Gradle build output (in every lab)
+target/
+build/
+out/
+.gradle/
+.kotlin/
+*.class
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Keep Maven and Gradle wrapper JARs under version control
+!**/.mvn/wrapper/maven-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# Python caches and local virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local logs and environment secrets
+*.log
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Temporary editor files
+*~
+*.swp
+*.swo
