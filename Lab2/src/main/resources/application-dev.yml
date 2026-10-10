@@ -1,0 +1,4 @@
+app:
+  data:
+    file: classpath:data/dev.csv
+    format: csv

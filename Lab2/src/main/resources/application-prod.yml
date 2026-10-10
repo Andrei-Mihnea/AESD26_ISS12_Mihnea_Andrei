@@ -1,0 +1,4 @@
+app:
+  data:
+    file: classpath:data/prod.psv # classpath tells the application to look inside the src/resources folder
+    format: psv
