@@ -3,3 +3,13 @@ Am ales sa folosesc annotation @ConfigurationProperties fata de @Value pentru ca
 Am creat o interfata pentru a generaliza usor behaviour-ul programului in functie de environment ul in care ruleaza extensia de fisiere fiind diferita in cazurile respective. 
 Pentru selectia corespunzatoare a clasei care trebuie folosite pentru environment am folosit notatia profile unde am adaugat mai jos si conditional expression in care ma asigur ca extensia fisierului este numai cea expected.
 Pentru implementarea custom actuator-ului m-am ajutat de interfata InfoContributor care ma ajuta sa imi pot adauga o ruta custom in care imi afisez informatiile relevante pentru mine
+
+## Experiment: Reflection vs ASM
+
+După ce am realizat experimentul, am observat că timpul necesar pentru a găsi clasele dorite prin metoda Reflection este mai mare decât timpul necesar prin ASM bytecode. Acest lucru este evident deoarece ASM caută metadatele direct în bytecode, fără să fie necesară încărcarea sau inițializarea claselor. Reflection încarcă clasele pentru a le inspecta. Ambele metode au găsit aceleași 200 de clase.
+
+| Abordare | Prima scanare (ms) | Media dupa warm-up ± abaterea standard (ms) | Componente gasite | Clase `GeneratedClass` incarcate (log JVM) | Blocuri statice executate | Clasa cu dependenta lipsa |
+|---|---:|---:|---:|---:|---:|---|
+| Reflection (`Class.forName(..., false, ...)`) | 112.551 | 33.960 ± 5.600 | 200 | 1000 | 0 | `NoClassDefFoundError`; clasa nu poate fi incarcata |
+| ASM (citire bytecode) | 33.990 | 20.117 ± 10.827 | 200 | 0 | 0 | Gaseste adnotarea fara sa incarce clasa |
+

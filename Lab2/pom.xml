@@ -65,6 +65,12 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<dependency>
+			<groupId>org.ow2.asm</groupId>
+			<artifactId>asm</artifactId>
+			<version>9.11</version>
+		</dependency>
+
 	</dependencies>
 
 	<build>

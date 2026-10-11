@@ -4,6 +4,11 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# Generated output for the Reflection vs ASM experiment
+/component-scan-experiment/sources/generated/GeneratedClass*.java
+/component-scan-experiment/classes/
+/component-scan-experiment/missing-dependency/
+
 ### STS ###
 .apt_generated
 .classpath
