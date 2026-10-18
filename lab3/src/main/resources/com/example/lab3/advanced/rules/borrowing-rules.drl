@@ -1,0 +1,57 @@
+package com.example.lab3.advanced.rules;
+
+import com.example.lab3.advanced.BorrowingRequest;
+import com.example.lab3.model.MemberRole;
+import com.example.lab3.model.BookType;
+
+rule "Reject invalid borrowing request"
+salience 10
+when
+    $request : BorrowingRequest(
+        decision.decided == false,
+        bookAvailable == false
+            || bookType == BookType.REFERENCE
+            || (memberRole == MemberRole.STUDENT && borrowedCount >= 2)
+            || (memberRole == MemberRole.REGULAR && borrowedCount >= 3)
+            || (memberRole == MemberRole.PREMIUM && borrowedCount >= 5)
+    )
+then
+    $request.getDecision().setDecided(true);
+    $request.getDecision().setAllowed(false);
+    $request.getDecision().setReason("Borrowing request does not meet the rules");
+    update($request);
+end
+
+rule "Approve valid borrowing request"
+when
+    $request : BorrowingRequest(
+        decision.decided == false,
+        bookAvailable == true,
+        bookType != BookType.REFERENCE,
+        (memberRole == MemberRole.STUDENT && borrowedCount < 2)
+            || (memberRole == MemberRole.REGULAR && borrowedCount < 3)
+            || (memberRole == MemberRole.PREMIUM && borrowedCount < 5)
+    )
+then
+    int limit = 2;
+    int period = 7;
+
+    if ($request.getMemberRole() == MemberRole.REGULAR) {
+        limit = 3;
+        period = 14;
+    } else if ($request.getMemberRole() == MemberRole.PREMIUM) {
+        limit = 5;
+        period = 30;
+    }
+
+    if ($request.getBookType() == BookType.FICTION) {
+        period += 7;
+    }
+
+    $request.getDecision().setDecided(true);
+    $request.getDecision().setAllowed(true);
+    $request.getDecision().setBorrowingLimit(limit);
+    $request.getDecision().setBorrowingPeriodDays(period);
+    $request.getDecision().setReason("Approved");
+    update($request);
+end

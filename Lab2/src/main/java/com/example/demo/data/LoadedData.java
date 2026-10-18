@@ -15,4 +15,5 @@ public class LoadedData {
     public int getRecordCount() {
         return records.size();
     }
+    public List<String> getRecords() { return records; }
 }

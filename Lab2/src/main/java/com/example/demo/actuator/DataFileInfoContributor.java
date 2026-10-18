@@ -25,7 +25,8 @@ public class DataFileInfoContributor implements InfoContributor {
         builder.withDetail("dataSource", Map.of(
                 "file", properties.getFile(),
                 "format", properties.getFormat(),
-                "recordCount", loadedData.getRecordCount()
+                "recordCount", loadedData.getRecordCount(),
+                "content", loadedData.getRecords()
         ));
     }
 }
