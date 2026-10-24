@@ -25,5 +25,8 @@ public class DepotService {
     public Depot save(Depot depot) { return depotRepository.save(depot); }
 
     @Transactional
+    public List<Depot> saveAll(Iterable<Depot> depots) { return depotRepository.saveAll(depots); }
+
+    @Transactional
     public void deleteById(Long id) { depotRepository.deleteById(id); }
 }

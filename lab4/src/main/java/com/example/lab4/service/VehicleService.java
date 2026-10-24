@@ -28,6 +28,9 @@ public class VehicleService {
     public Vehicle save(Vehicle vehicle) { return vehicleRepository.save(vehicle); }
 
     @Transactional
+    public List<Vehicle> saveAll(Iterable<Vehicle> vehicles) { return vehicleRepository.saveAll(vehicles); }
+
+    @Transactional
     public void deleteById(Long id) { vehicleRepository.deleteById(id); }
 
     @Transactional

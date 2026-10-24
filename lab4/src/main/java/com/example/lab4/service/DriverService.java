@@ -25,5 +25,8 @@ public class DriverService {
     public Driver save(Driver driver) { return driverRepository.save(driver); }
 
     @Transactional
+    public List<Driver> saveAll(Iterable<Driver> drivers) { return driverRepository.saveAll(drivers); }
+
+    @Transactional
     public void deleteById(Long id) { driverRepository.deleteById(id); }
 }
