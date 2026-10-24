@@ -81,7 +81,6 @@ public class BorrowingService {
         System.out.println(member.getName() + " returned " + book.getTitle());
     }
 
-    // Used by the aspects to look up details for logging.
     public Member findMember(UUID memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new BorrowingException(

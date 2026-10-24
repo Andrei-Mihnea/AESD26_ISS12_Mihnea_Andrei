@@ -4,10 +4,7 @@ import com.example.lab3.model.Member;
 import com.example.lab3.model.MemberRole;
 import org.springframework.stereotype.Repository;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Repository
 public class MemberRepository {
@@ -30,7 +27,7 @@ public class MemberRepository {
         members.put(member.getId(), member);
     }
 
-    public java.util.Collection<Member> findAll() {
-        return java.util.Collections.unmodifiableCollection(members.values());
+    public Collection<Member> findAll() {
+        return Collections.unmodifiableCollection(members.values());
     }
 }

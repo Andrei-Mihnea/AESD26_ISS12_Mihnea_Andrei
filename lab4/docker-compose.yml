@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lab4-postgres
+    environment:
+      POSTGRES_DB: lab4
+      POSTGRES_USER: lab4
+      POSTGRES_PASSWORD: lab4
+    ports:
+      - "5432:5432"
+    volumes:
+      - lab4-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab4 -d lab4"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lab4-postgres-data:
