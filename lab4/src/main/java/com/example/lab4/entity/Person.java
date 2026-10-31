@@ -6,7 +6,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
 
-/** Shared persistent fields for people represented in the system. */
 @MappedSuperclass
 public abstract class Person {
     @Id
@@ -31,6 +30,12 @@ public abstract class Person {
     }
 
     public Long getId() { return id; }
+    protected void updateContactDetails(String name, String email, String phone) {
+        this.name = name;
+        this.email = email;
+        this.phone = phone;
+    }
+
     public String getName() { return name; }
     public String getEmail() { return email; }
     public String getPhone() { return phone; }

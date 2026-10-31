@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @SpringBootApplication
 @EnableCaching
@@ -37,7 +39,7 @@ public class Lab4Application {
                                        @Value("${app.seed.enabled:true}") boolean seedEnabled,
                                        @Value("${app.seed.depots:10}") int depotCount,
                                        @Value("${app.seed.vehicles:50}") int vehicleCount,
-                                       @Value("${app.seed.customers:500}") int customerCount,
+                                       @Value("${app.seed.customers:1000}") int customerCount,
                                        @Value("${app.seed.deliveries-per-customer:3}") int deliveriesPerCustomer) {
         return args -> {
             Depot depot = depots.findByName("Demo Depot")
@@ -69,16 +71,17 @@ public class Lab4Application {
                               VehicleService vehicleService, CustomerService customerService,
                               DeliveryService deliveryService, int depotCount, int vehicleCount,
                               int customerCount, int deliveriesPerCustomer) {
-        String firstSeedEmail = "seed.customer.0@vros.example";
-        if (customerService.findByEmail(firstSeedEmail).isPresent()) {
-            System.out.println("DataFaker seed already exists; skipping database population.");
-            return;
-        }
         if (depotCount < 1 || vehicleCount < 1 || customerCount < 1 || deliveriesPerCustomer < 1) {
             throw new IllegalArgumentException("Seed counts must all be positive.");
         }
 
         Faker faker = new Faker();
+        if (customerService.findByEmail("seed.customer.0@vros.example").isPresent()) {
+            System.out.println("Infrastructure seed already exists; checking for missing generated customers.");
+            seedCustomers(customerService, deliveryService, faker, customerCount, deliveriesPerCustomer);
+            return;
+        }
+
         List<Depot> depots = new ArrayList<>();
         for (int i = 0; i < depotCount; i++) {
             depots.add(new Depot(faker.address().city() + " Depot " + i, randomCoordinates(faker)));
@@ -100,10 +103,23 @@ public class Lab4Application {
         }
         vehicleService.saveAll(vehicles);
 
+        System.out.printf("DataFaker populated %d depots, %d drivers, and %d vehicles.%n",
+                depots.size(), drivers.size(), vehicleCount);
+        seedCustomers(customerService, deliveryService, faker, customerCount, deliveriesPerCustomer);
+    }
+
+    private void seedCustomers(CustomerService customerService, DeliveryService deliveryService,
+                               Faker faker, int customerCount, int deliveriesPerCustomer) {
+        Set<String> existingEmails = customerService.findAll().stream()
+                .map(Customer::getEmail).collect(Collectors.toSet());
         List<Customer> customers = new ArrayList<>();
         for (int i = 0; i < customerCount; i++) {
-            customers.add(new Customer(faker.name().fullName(), "seed.customer." + i + "@vros.example",
-                    "+40" + String.format("%09d", 700_000_000 + i), faker.address().streetAddress(),
+            String email = "seed.customer." + i + "@vros.example";
+            if (existingEmails.contains(email)) {
+                continue;
+            }
+            customers.add(new Customer(faker.name().fullName(), email,
+                    faker.phoneNumber().toString(), faker.address().streetAddress(),
                     randomCoordinates(faker)));
         }
         customers = customerService.saveAll(customers);
@@ -117,8 +133,8 @@ public class Lab4Application {
             }
         }
         deliveryService.saveAll(generatedDeliveries);
-        System.out.printf("DataFaker populated %d depots, %d drivers, %d vehicles, %d customers, and %d deliveries.%n",
-                depots.size(), drivers.size(), vehicleCount, customers.size(), generatedDeliveries.size());
+        System.out.printf("DataFaker added %d customers and %d deliveries (generated customer target: %d).%n",
+                customers.size(), generatedDeliveries.size(), customerCount);
     }
 
     private String randomCoordinates(Faker faker) {

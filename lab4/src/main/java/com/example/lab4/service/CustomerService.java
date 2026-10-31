@@ -36,4 +36,24 @@ public class CustomerService {
     @Transactional
     @CacheEvict(cacheNames = "customersByEmail", allEntries = true)
     public void deleteById(Long id) { customerRepository.deleteById(id); }
+
+    @Transactional
+    @CacheEvict(cacheNames = "customersByEmail", allEntries = true)
+    public Optional<Customer> update(Long id, String name, String email, String phone,
+                                     String address, String coordinates) {
+        return customerRepository.findById(id).map(customer -> {
+            customer.updateDetails(name, email, phone, address, coordinates);
+            return customer;
+        });
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = "customersByEmail", allEntries = true)
+    public boolean deleteIfPresent(Long id) {
+        return customerRepository.findById(id).map(customer -> {
+            customerRepository.delete(customer);
+            customerRepository.flush();
+            return true;
+        }).orElse(false);
+    }
 }

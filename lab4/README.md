@@ -11,7 +11,66 @@ docker compose up -d
 
 The `db` service exposes PostgreSQL on `localhost:5432` with database/user/password `lab4`. The application uses those settings by default and can be pointed elsewhere with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`.
 
-On startup, a `CommandLineRunner` exercises all five services by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. DataFaker also creates 10 depots, 50 drivers and vehicles, 500 customers, and 1,500 deliveries on the first run. A seed marker prevents adding the same batch on each restart. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
+On startup, a `CommandLineRunner` exercises all five services by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. DataFaker also creates 10 depots, 50 drivers and vehicles, 1,000 customers, and 3,000 deliveries on the first run. Existing generated customer emails are skipped on restart. Increasing `APP_SEED_CUSTOMERS` adds the missing generated customers and their deliveries without duplicating the existing batch. The demo customer and manually created customers are additional to this generated customer target; lowering the target does not delete data. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
+
+## Routing scenarios
+
+`Scenario` has a name and two sets: selected vehicles and selected deliveries. Both are unidirectional `@ManyToMany` associations owned by `Scenario`, stored in `scenario_vehicles` and `scenario_deliveries`. A vehicle or delivery may be reused in multiple scenarios. Composite primary keys prevent duplicate memberships. The schema adds these tables on startup without replacing existing data.
+
+Persist vehicles and deliveries first, then select them for a scenario inside a transaction:
+
+```java
+Scenario scenario = new Scenario("Morning routing problem");
+scenario.addVehicle(vehicle);
+scenario.addDelivery(delivery);
+scenarioService.save(scenario);
+```
+
+`ScenarioRepository` provides JPA persistence and `ScenarioService` provides find, save and delete operations. Use `addVehicle`, `removeVehicle`, `addDelivery`, and `removeDelivery` to edit membership. Access the lazy sets inside a transaction. Deleting a scenario removes its join-table rows while preserving shared vehicles and deliveries; no JPA persist/remove cascades are configured for members. Membership does not assign a delivery to a particular vehicle or calculate routes.
+
+With PostgreSQL running, `./mvnw -Dapp.seed.enabled=false test` runs `RoutingApiTests` against an HTTP server on a random port. It verifies CRUD, validation, missing references, failed scenario updates, shared membership, and safe deletion. Test resources are cleaned up after execution.
+
+## Customer REST API (compulsory)
+
+The application serves HTTP on port 8080. Spring Web MVC exposes customer CRUD, Bean Validation checks incoming details, and `springdoc-openapi-starter-webmvc-ui` 3.2.0 generates interactive API documentation compatible with Spring Boot 4.1.
+
+- Swagger UI: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
+- OpenAPI JSON: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+
+| Method | Endpoint | Success |
+| --- | --- | --- |
+| POST | `/api/customers` | `201 Created`, customer JSON and a `Location` header |
+| GET | `/api/customers` | `200 OK`, customer array |
+| GET | `/api/customers/{id}` | `200 OK`, customer JSON |
+| PUT | `/api/customers/{id}` | `200 OK`, updated customer JSON |
+| DELETE | `/api/customers/{id}` | `204 No Content` |
+
+POST and PUT require `name`, `email`, `phone`, `address`, and `coordinates`. Every field must be nonblank; email must be valid. Maximum lengths match the database: name 120, phone 40, and the other fields 255 characters. PUT replaces all five details of an existing customer. Responses include the generated `id` and these details, without serializing the delivery relationship.
+
+Invalid bodies or nonnumeric IDs return `400 Bad Request`. Missing customers return `404 Not Found`. Duplicate emails and attempts to delete customers with deliveries return `409 Conflict`; deliveries retain the existing database restriction. Successful creates, updates and deletes evict the customer email cache.
+
+### Test with Swagger UI
+
+With PostgreSQL and the application running, open [Swagger UI](http://localhost:8080/swagger-ui.html) and expand **Customers**. For each operation, click **Try it out**, fill in the parameters or request body, then click **Execute** to inspect the status, headers, and response body.
+
+1. Execute **POST /api/customers** with the JSON below. Expect `201 Created`; copy the returned `id` and check the `Location` header.
+2. Execute **GET /api/customers** and **GET /api/customers/{id}** using that ID. Expect `200 OK` and the created customer's details.
+3. Execute **PUT /api/customers/{id}** with the same ID and all five fields, changing the name or address. Expect `200 OK`. Retrieve the customer again to confirm the update.
+4. Execute **DELETE /api/customers/{id}**. Expect `204 No Content`. Retrieve the deleted ID again and expect `404 Not Found`.
+
+Example POST/PUT request body:
+
+```json
+{
+  "name": "Ana Popescu",
+  "email": "ana.swagger@example.com",
+  "phone": "+40712345678",
+  "address": "1 Example Street",
+  "coordinates": "44.4268,26.1025"
+}
+```
+
+Also check error responses through **Try it out**: submit a blank name or invalid email for `400`, reuse an existing email for `409`, and use a deleted customer ID for `404`. Attempting to delete the startup demo customer (`demo@example.com`), which has a delivery, returns `409`.
 
 ## Repository queries
 
@@ -40,3 +99,107 @@ The JMH benchmark uses 5 one-second warm-up iterations, 10 one-second measuremen
 Measured on 2026-10-24 with JMH 1.37, OpenJDK 21.0.12.1, macOS ARM64, and the local Docker PostgreSQL database: the cached service lookup averaged **0.279 ± 0.003 µs/op**, while the uncached repository lookup averaged **107.383 ± 2.047 µs/op**. That is about **384× lower read latency** for this warmed, single-key cache-hit workload. The raw JMH output is in `benchmark-results/customer-read-jmh.json`; results depend on the host and database and should be treated as a local measurement rather than a general performance guarantee.
 
 To stop PostgreSQL while retaining its data, run `docker compose down`. To also delete the database volume, run `docker compose down -v`.
+
+
+## Vehicle, delivery, and scenario REST APIs
+
+All three resources support the following operations and are documented in [Swagger UI](http://localhost:8080/swagger-ui.html):
+
+| Operation | Vehicles | Deliveries | Scenarios | Success |
+| --- | --- | --- | --- | --- |
+| Create | `POST /api/vehicles` | `POST /api/deliveries` | `POST /api/scenarios` | 201 + Location header |
+| List | `GET /api/vehicles` | `GET /api/deliveries` | `GET /api/scenarios` | 200 |
+| Read | `GET /api/vehicles/{id}` | `GET /api/deliveries/{id}` | `GET /api/scenarios/{id}` | 200 |
+| Replace | `PUT /api/vehicles/{id}` | `PUT /api/deliveries/{id}` | `PUT /api/scenarios/{id}` | 200 |
+| Delete | `DELETE /api/vehicles/{id}` | `DELETE /api/deliveries/{id}` | `DELETE /api/scenarios/{id}` | 204 |
+
+Vehicle POST/PUT body:
+
+```json
+{"name":"Van A","capacity":100,"available":true}
+```
+
+Capacity must be positive and the name must be nonblank, unique, and at most 120 characters. The API selects the default depot automatically and leaves the driver unassigned; no depot or driver fields are needed in requests. To support existing lab4 data with multiple depots, the depot with the lowest ID is used consistently. Existing seed records are preserved. If there is no depot, vehicle writes return 409.
+
+Delivery POST/PUT body (replace `customerId` with an existing customer ID):
+
+```json
+{"customerId":1,"quantity":10,"notes":"Fragile","timestamp":"2026-10-31T12:00:00Z"}
+```
+
+Customer ID, positive quantity, and an ISO 8601 timestamp with an offset are required. Notes are optional. PUT can change the customer as well as the other delivery details.
+
+Scenario POST/PUT body (replace IDs with existing resources):
+
+```json
+{"name":"Morning routes","vehicleIds":[1,2],"deliveryIds":[1,2,3]}
+```
+
+The name must be nonblank and at most 120 characters. Both ID sets are required; empty sets are allowed. PUT replaces the name and both sets, so empty arrays clear the memberships. Missing referenced customers, vehicles, or deliveries return 404; invalid bodies return 400. Failed updates leave the original scenario intact. Resource names other than vehicle names need not be unique.
+
+Deleting a scenario preserves its selected resources. Deleting a vehicle or delivery removes its memberships from all scenarios while preserving the scenarios. Responses use IDs for relationships and are built inside service transactions, with `spring.jpa.open-in-view=false`.
+
+To test in Swagger UI, create a vehicle, then a delivery for an existing customer, then a scenario containing their IDs. Use GET to inspect each resource, PUT to change it, and DELETE to remove it. Verify 404 after deletion and 400 for invalid bodies. Reusing a vehicle name returns 409. Deleting a customer who still has deliveries continues to return 409. Scenario solving belongs to a future phase.
+
+
+## Custom runtime exception
+
+`ResourceNotFoundException` in `com.example.lab4.exception` extends `RuntimeException`. Customer endpoints and the vehicle, delivery, and scenario services throw it when a requested resource or referenced entity is missing. `ApiExceptionHandler`, registered globally through `@RestControllerAdvice`, handles it with `@ExceptionHandler(ResourceNotFoundException.class)` and returns HTTP 404 with a `ProblemDetail` JSON body whose `detail` identifies the missing resource.
+
+To verify in Swagger UI, execute GET for any resource with an ID that does not exist. For example, an absent vehicle ID yields a detail such as `Vehicle 999999 not found`. POST/PUT requests referencing missing customers, vehicles, or deliveries use the same global handler.
+
+
+## ETag conditional GET requests
+
+Successful GET requests for both collection and individual resources under `/api/*` include an `ETag` response header. `EtagConfiguration` registers `ApiEtagFilter`, which hashes the serialized response body and uses Spring’s ETag parser for header matching. Send the previous ETag in the `If-None-Match` request header:
+
+- No header or a different ETag: `200 OK`, current representation, and its ETag.
+- A matching ETag: `304 Not Modified`, the ETag, and no response body.
+- After a representation changes: the old ETag no longer matches, so GET returns `200` with the new body and ETag.
+
+The filter supports quoted validators, weak validators, lists of validators, and `If-None-Match: *` for successful GET responses. Missing resources still return 404, including when the header is `*`. POST, PUT, and DELETE behavior is unchanged; this implements conditional reads, not optimistic concurrency control for writes. Because the validator is computed after producing the response body, this saves network bandwidth rather than database queries or serialization work.
+
+### Test ETags in Swagger UI
+
+1. Execute a GET, such as `/api/vehicles/{id}`, without `If-None-Match`. Copy the response's `etag` header, including the quotes.
+2. Paste that value into the GET operation's optional **If-None-Match** header field and execute again. Expect **304** with an empty body.
+3. Update that vehicle's capacity through PUT. Repeat GET with the old ETag: expect **200**, the updated vehicle, and a different ETag.
+4. Repeat with the new ETag: expect **304**. The same workflow works for customers, deliveries, scenarios, and their list endpoints.
+
+
+## JSON and XML content negotiation
+
+The customer resource supports `application/json` and `application/xml`. The `Accept` header chooses the response format; `Content-Type` describes the body sent with POST/PUT. JSON is the default when no format is requested. Jackson XML is configured automatically by the `tools.jackson.dataformat:jackson-dataformat-xml` dependency, and the customer DTOs define the XML root element as `customer`.
+
+Example XML customer request:
+
+```xml
+<customer>
+  <name>Ana Popescu</name>
+  <email>ana.xml@example.com</email>
+  <phone>+40712345678</phone>
+  <address>1 Example Street</address>
+  <coordinates>44.4268,26.1025</coordinates>
+</customer>
+```
+
+In Swagger UI, choose `application/xml` in the customer POST/PUT request-body media-type selector to send XML. Choose `application/xml` in the successful response media-type selector to request XML, or `application/json` for JSON. GET supports both formats for individual customers and customer lists. Unsupported response formats return 406; unsupported request content types return 415. Bean Validation applies to both XML and JSON requests.
+
+GET responses include `Vary: Accept`. ETags are calculated from the selected representation, so the JSON and XML versions have different validators. Reuse an XML ETag with `Accept: application/xml` to receive 304; sending a JSON ETag while requesting XML returns 200 with the XML body.
+
+
+## Springdoc documentation and Swagger UI verification
+
+`CustomerController.findById` explicitly documents `GET /api/customers/{id}` using `@Operation`, `@Parameter`, and `@ApiResponses`. It describes the path ID, JSON/XML response schemas, 400 and 404 errors, and conditional GET behavior. `EtagConfiguration` adds the optional `If-None-Match` header, the ETag response header, and the 304 response to the generated OpenAPI document.
+
+Verified on 2026-10-31 by executing requests through Swagger UI's **Try it out** / **Execute** controls:
+
+| Test | Observed result |
+| --- | --- |
+| GET customer 1 with JSON selected | 200, customer JSON, ETag, and `Vary: Accept` |
+| Repeat GET with its ETag in `If-None-Match` | 304, ETag retained, no response body |
+| GET customer 1 with XML selected | 200, `<customer>` XML, and a different ETag |
+| GET customer 999999999 | 404, ProblemDetail identifying the missing customer |
+| Enter `abc` as the path ID | Swagger client-side validation rejects it as a non-integer |
+
+The verification uses existing demo data and does not modify database records. Swagger may label a 304 response as an error in its result panel; the 304 with no body is the expected HTTP conditional-GET result.

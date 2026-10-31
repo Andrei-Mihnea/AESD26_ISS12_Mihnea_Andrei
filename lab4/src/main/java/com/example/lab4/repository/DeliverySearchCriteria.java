@@ -3,7 +3,6 @@ package com.example.lab4.repository;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
-/** Optional filters for searching delivery requests. A null field is ignored. */
 public record DeliverySearchCriteria(
         Long customerId,
         String areaContains,

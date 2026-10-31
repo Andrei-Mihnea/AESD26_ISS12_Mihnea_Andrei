@@ -21,6 +21,12 @@ public class Customer extends Person {
         this.address = address; this.coordinates = coordinates;
     }
     public String getAddress() { return address; }
+    public void updateDetails(String name, String email, String phone, String address, String coordinates) {
+        updateContactDetails(name, email, phone);
+        this.address = address;
+        this.coordinates = coordinates;
+    }
+
     public String getCoordinates() { return coordinates; }
     public List<Delivery> getDeliveries() { return deliveries; }
 }

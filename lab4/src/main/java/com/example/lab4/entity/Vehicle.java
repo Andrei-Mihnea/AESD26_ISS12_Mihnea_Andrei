@@ -24,6 +24,14 @@ public class Vehicle {
     public Vehicle(String name, Integer capacity, Depot depot, boolean available, Driver driver) {
         this.name = name; this.capacity = capacity; this.depot = depot; this.available = available; this.driver = driver;
     }
+    public void updateDetails(String name, Integer capacity, boolean available, Depot depot) {
+        this.name = name;
+        this.capacity = capacity;
+        this.available = available;
+        this.depot = depot;
+        this.driver = null;
+    }
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public Integer getCapacity() { return capacity; }

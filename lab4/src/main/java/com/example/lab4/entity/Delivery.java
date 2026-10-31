@@ -22,6 +22,13 @@ public class Delivery {
     public Delivery(Customer customer, Integer quantity, String notes, OffsetDateTime timestamp) {
         this.customer = customer; this.quantity = quantity; this.notes = notes; this.timestamp = timestamp;
     }
+    public void updateDetails(Customer customer, Integer quantity, String notes, OffsetDateTime timestamp) {
+        this.customer = customer;
+        this.quantity = quantity;
+        this.notes = notes;
+        this.timestamp = timestamp;
+    }
+
     public Long getId() { return id; }
     public Customer getCustomer() { return customer; }
     public Integer getQuantity() { return quantity; }
