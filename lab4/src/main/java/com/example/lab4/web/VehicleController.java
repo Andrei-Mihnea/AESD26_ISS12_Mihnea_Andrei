@@ -14,7 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/vehicles")
+@RequestMapping({"/api/v1/vehicles", "/api/v2/vehicles", "/api/vehicles"})
 @Tag(name = "Vehicles")
 public class VehicleController {
     private final VehicleService service;

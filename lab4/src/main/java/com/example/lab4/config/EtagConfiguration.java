@@ -4,7 +4,7 @@ import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponse;
-import org.springdoc.core.customizers.OpenApiCustomizer;
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,7 +22,7 @@ public class EtagConfiguration {
     }
 
     @Bean
-    public OpenApiCustomizer conditionalGetDocumentation() {
+    public GlobalOpenApiCustomizer conditionalGetDocumentation() {
         return openApi -> {
             if (openApi.getPaths() == null) return;
             openApi.getPaths().forEach((path, item) -> {

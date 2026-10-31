@@ -1,6 +1,8 @@
 # Lab 4 – Java Persistence API
 
-Spring Boot + Spring Data JPA project backed by PostgreSQL. The schema is created by `src/main/resources/schema.sql`; Hibernate validates the entity mappings against it on startup.
+Spring Boot + Spring Data JPA project backed by PostgreSQL. Flyway applies versioned SQL migrations from `src/main/resources/db/migration` before Hibernate validates the entity mappings on startup.
+
+The preferred API prefix is `/api/v2`. Explicit `/api/v1` routes and the original unversioned paths remain supported compatibility routes. Older examples below still work; see the version migration strategy at the end.
 
 ## Run
 
@@ -15,7 +17,7 @@ On startup, a `CommandLineRunner` exercises all five services by finding or crea
 
 ## Routing scenarios
 
-`Scenario` has a name and two sets: selected vehicles and selected deliveries. Both are unidirectional `@ManyToMany` associations owned by `Scenario`, stored in `scenario_vehicles` and `scenario_deliveries`. A vehicle or delivery may be reused in multiple scenarios. Composite primary keys prevent duplicate memberships. The schema adds these tables on startup without replacing existing data.
+`Scenario` has a name and two sets: selected vehicles and selected deliveries. Both are unidirectional `@ManyToMany` associations owned by `Scenario`, stored in `scenario_vehicles` and `scenario_deliveries`. A vehicle or delivery may be reused in multiple scenarios. Composite primary keys prevent duplicate memberships. Flyway migration `V2__add_routing_scenarios.sql` adds these tables without replacing existing data.
 
 Persist vehicles and deliveries first, then select them for a scenario inside a transaction:
 
@@ -203,3 +205,94 @@ Verified on 2026-10-31 by executing requests through Swagger UI's **Try it out**
 | Enter `abc` as the path ID | Swagger client-side validation rejects it as a non-integer |
 
 The verification uses existing demo data and does not modify database records. Swagger may label a 304 response as an error in its result panel; the 304 with no body is the expected HTTP conditional-GET result.
+
+
+## Database migrations with Flyway
+
+Spring Boot's Flyway starter and the PostgreSQL Flyway module run migrations automatically before JPA initializes:
+
+1. `V1__create_delivery_domain.sql`: depots, drivers, vehicles, customers, deliveries, and their indexes/constraints.
+2. `V2__add_routing_scenarios.sql`: scenarios and the vehicle/delivery membership tables and indexes.
+
+Flyway stores applied versions, checksums, and execution results in `flyway_schema_history`. Subsequent starts validate the recorded checksums and apply only pending migrations. Hibernate remains configured with `ddl-auto=validate`; basic SQL initialization is disabled, and `schema.sql` has been replaced by the versioned files. DataFaker still populates application data after migrations and JPA initialization.
+
+### Existing lab4 database: one-time adoption
+
+The local lab4 database was adopted and verified on 2026-10-31. Start it normally; the following procedure is only needed for another legacy database without Flyway history.
+
+A database previously initialized by `schema.sql` has tables but no Flyway history. For that database only, run once from `lab4`:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=0"
+```
+
+Flyway records baseline version 0 and executes V1 and V2. These initial adoption migrations use `IF NOT EXISTS`, preserving the existing lab4 tables and records; missing tables are created. They expect the legacy lab4 schema to match the project mappings. Hibernate checks those mappings afterward. Baseline is an adoption marker, not a schema comparison or a backup.
+
+After this one-time adoption, stop the application and use the normal run command. Automatic baselining is disabled by default. An empty database needs no adoption flags: both migrations run normally. Do not delete your database volume to enable migrations.
+
+To inspect migration history in the local Docker database:
+
+```bash
+docker compose exec db psql -U lab4 -d lab4 -c 'SELECT installed_rank, version, description, type, success FROM flyway_schema_history ORDER BY installed_rank;'
+```
+
+For later schema changes, add `V3__describe_change.sql`, then V4, and so on. Do not edit already applied migrations: checksum validation detects changes and prevents startup. Flyway clean is disabled to protect existing data.
+
+
+Migration verification on 2026-10-31 passed 15 checks: fresh V1/V2 application, repeat migration with no pending work, Hibernate validation on a fresh schema, rejection of an unbaselined nonempty schema, explicit baseline-0 adoption, preservation of legacy rows, checksum mismatch detection, adoption of the existing local lab4 schema, and normal startup afterward. Row counts and ordered row-content hashes for all eight domain/join tables were identical before and after adopting the local database. Verification schemas were removed afterward.
+
+
+## Customer HATEOAS links
+
+Every customer returned by GET (including collection items), POST, and PUT includes a `_links` map:
+
+```json
+{
+  "id": 1,
+  "name": "Demo Customer",
+  "_links": {
+    "self": {"href": "http://localhost:8080/api/v2/customers/1"},
+    "customers": {"href": "http://localhost:8080/api/v2/customers"},
+    "deliveries": {"href": "http://localhost:8080/api/v2/customers/1/deliveries"}
+  }
+}
+```
+
+The example omits the other customer fields for readability. These links enable navigation using relation names instead of constructing resource URLs. `CustomerRepresentationAssembler` builds absolute links from the current servlet mapping and the selected API version, so the host, port, and context path are not hardcoded. DTOs carry a small `ResourceLink` value; no entities are serialized and no HAL-specific media type is required. The existing JSON customer-array shape is preserved, and XML customer responses include the same navigation data.
+
+`GET /api/customers/{id}/deliveries` is the working target of the `deliveries` link. It returns only that customer's deliveries, ordered by ID, using delivery DTOs. An existing customer with no deliveries gets an empty collection; a missing customer gets 404. It supports JSON/XML negotiation and ETags like the other customer GET endpoints.
+
+In Swagger UI, execute GET for a customer, inspect `_links`, then execute the linked `GET /api/customers/{id}/deliveries` operation with that ID. Every returned delivery should have the same `customerId`. POST/PUT customer responses also contain the navigation links.
+
+
+## URI-based API versioning and migration strategy
+
+All existing operations for customers, vehicles, deliveries, and scenarios are available under both `/api/v1/...` and `/api/v2/...`, including customer delivery navigation. V2 is preferred for new clients. Both versions currently accept and return the same DTO contract; versioning does not require inventing a breaking payload change. They use the same service layer, database, and resource IDs, so a record created in v1 is visible in v2.
+
+| Route | Contract | Status |
+| --- | --- | --- |
+| `/api/customers` (and other original resource paths) | v1 compatibility alias | Deprecated, still supported |
+| `/api/v1/customers` | v1 | Deprecated, still supported |
+| `/api/v2/customers` | v2, currently payload-compatible with v1 | Preferred |
+
+The same URI prefixes apply to `vehicles`, `deliveries`, and `scenarios`. Unknown versions such as `/api/v3/customers` have no mapping and return 404; they never silently fall back to another version. There are no automatic redirects for POST/PUT/DELETE.
+
+`API-Version: 1` or `API-Version: 2` identifies the selected version in responses. V1 and legacy responses also include a standards-formatted `Deprecation` timestamp and a `Link` header with `rel="successor-version"` pointing at the corresponding v2 URI. No retirement date has been scheduled, so no `Sunset` date is advertised. Customer HATEOAS links remain in the requested version; legacy aliases return canonical v1 links. Creation `Location` headers identify the route used to create the resource.
+
+### Swagger documentation
+
+Select **v1** or **v2** in Swagger UI's definition selector. The versioned OpenAPI documents are `/v3/api-docs/v1` and `/v3/api-docs/v2`; the ungrouped `/v3/api-docs` still lists all mappings. Conditional GET headers and 304 responses are documented for both groups. JSON/XML content negotiation for customers is independent of URI versioning.
+
+### Transition clients from v1 to v2
+
+1. Inventory callers using `/api/...` or `/api/v1/...`. Keep v1 behavior stable during migration; publish the v2 schema and release notes before any future breaking change.
+2. Change the client's configured base prefix to `/api/v2`, keeping IDs, HTTP methods, request bodies, and accepted media types unchanged for this release. Follow the v2 links returned by the server rather than constructing paths manually.
+3. Treat v2 URIs as separate cache keys. Make an initial unconditional GET and store its ETag; do not carry cached v1 customer representations into v2 because their navigation links differ.
+4. Verify create/read/update/delete, validation, errors, related deliveries, content negotiation, and conditional GET against the v2 Swagger definition. Use the `API-Version` response header to confirm routing. Move callers gradually; avoid replaying writes in both versions because they share data.
+5. If a breaking v2 change is later needed, first split its controllers and DTOs from v1 instead of changing the currently shared DTOs or mappings. Keep business logic reusable, map each version at the HTTP boundary, and provide explicit before/after payload examples. Use additive Flyway migrations while both versions are deployed; remove old columns only after v1 retirement.
+6. Measure remaining v1 usage at the gateway or access logs. Once callers are migrated, announce a retirement date and add a `Sunset` header before removing old routes. Removal is a future explicit release change; it has not been enabled here.
+
+Rollback during this compatible transition means restoring the client's `/api/v1` prefix; existing data and IDs remain usable. Future breaking versions need their own rollback and data-compatibility plan.
+
+
+Versioning verification on 2026-10-31 passed 135 live checks, covering both versions and legacy routes, shared-data CRUD, version/deprecation metadata, version-aware links, JSON/XML, conditional GET, unknown-version rejection, and scoped Swagger documents. The verification used a non-default context path containing `/api` to check link construction and removed its test records afterward.

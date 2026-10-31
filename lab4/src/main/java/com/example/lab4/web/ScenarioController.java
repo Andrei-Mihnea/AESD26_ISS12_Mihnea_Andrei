@@ -14,7 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/scenarios")
+@RequestMapping({"/api/v1/scenarios", "/api/v2/scenarios", "/api/scenarios"})
 @Tag(name = "Scenarios")
 public class ScenarioController {
     private final ScenarioService service;

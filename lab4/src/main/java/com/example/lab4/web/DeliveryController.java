@@ -14,7 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/deliveries")
+@RequestMapping({"/api/v1/deliveries", "/api/v2/deliveries", "/api/deliveries"})
 @Tag(name = "Deliveries")
 public class DeliveryController {
     private final DeliveryService service;

@@ -2,6 +2,8 @@ package com.example.lab4.web;
 
 import com.example.lab4.exception.ResourceNotFoundException;
 
+import com.example.lab4.dto.DeliveryResponse;
+import com.example.lab4.service.DeliveryService;
 import com.example.lab4.dto.CustomerRequest;
 import com.example.lab4.dto.CustomerResponse;
 
@@ -26,24 +28,30 @@ import java.net.URI;
 import java.util.List;
 
 @RestController
-@RequestMapping(value = "/api/customers",
+@RequestMapping(value = {"/api/v1/customers", "/api/v2/customers", "/api/customers"},
         produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE})
 @Tag(name = "Customers", description = "Create, read, update and delete customers")
 public class CustomerController {
     private final CustomerService customers;
 
-    public CustomerController(CustomerService customers) {
+    private final DeliveryService deliveries;
+    private final CustomerRepresentationAssembler representations;
+
+    public CustomerController(CustomerService customers, DeliveryService deliveries,
+                              CustomerRepresentationAssembler representations) {
         this.customers = customers;
+        this.deliveries = deliveries;
+        this.representations = representations;
     }
 
     @GetMapping
     @Operation(summary = "List all customers")
     public List<CustomerResponse> findAll() {
-        return customers.findAll().stream().map(CustomerResponse::from).toList();
+        return customers.findAll().stream().map(representations::toResponse).toList();
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Find a customer by ID", description = "Returns an existing customer's details. "
+    @Operation(summary = "Find a customer by ID", description = "Returns an existing customer's details and self, customers, and deliveries links. "
             + "Select application/json or application/xml using Accept. Copy the ETag response header "
             + "into If-None-Match on a subsequent request to receive 304 when the representation is unchanged.")
     @ApiResponses({
@@ -60,8 +68,16 @@ public class CustomerController {
     public CustomerResponse findById(
             @Parameter(description = "ID of an existing customer; the startup demo normally has ID 1", example = "1")
             @PathVariable Long id) {
-        return customers.findById(id).map(CustomerResponse::from)
+        return customers.findById(id).map(representations::toResponse)
                 .orElseThrow(() -> notFound(id));
+    }
+
+    @GetMapping("/{id}/deliveries")
+    @Operation(summary = "List a customer's deliveries", description = "Follow the deliveries link in a customer "
+            + "response to discover this endpoint. Returns an empty list when the customer has no deliveries, "
+            + "or 404 when the customer does not exist. Supports JSON, XML, and conditional GET with ETag.")
+    public List<DeliveryResponse> findDeliveries(@PathVariable Long id) {
+        return deliveries.findForCustomer(id);
     }
 
     @PostMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE})
@@ -71,7 +87,7 @@ public class CustomerController {
                 request.address(), request.coordinates()));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
                 .buildAndExpand(customer.getId()).toUri();
-        return ResponseEntity.created(location).body(CustomerResponse.from(customer));
+        return ResponseEntity.created(location).body(representations.toResponse(customer));
     }
 
     @PutMapping(value = "/{id}",
@@ -80,7 +96,7 @@ public class CustomerController {
     public CustomerResponse update(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
         return customers.update(id, request.name(), request.email(), request.phone(),
                         request.address(), request.coordinates())
-                .map(CustomerResponse::from).orElseThrow(() -> notFound(id));
+                .map(representations::toResponse).orElseThrow(() -> notFound(id));
     }
 
     @DeleteMapping("/{id}")

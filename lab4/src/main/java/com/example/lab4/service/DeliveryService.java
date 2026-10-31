@@ -52,6 +52,12 @@ public class DeliveryService {
         return deliveryRepository.findAll().stream().map(DeliveryResponse::from).toList();
     }
 
+    public List<DeliveryResponse> findForCustomer(Long customerId) {
+        customer(customerId);
+        return deliveryRepository.findByCustomer_IdOrderByIdAsc(customerId).stream()
+                .map(DeliveryResponse::from).toList();
+    }
+
     public DeliveryResponse findResponse(Long id) { return DeliveryResponse.from(require(id)); }
 
     @Transactional
