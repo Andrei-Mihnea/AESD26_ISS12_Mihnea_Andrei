@@ -4,6 +4,8 @@ Spring Boot + Spring Data JPA project backed by PostgreSQL. Flyway applies versi
 
 The preferred API prefix is `/api/v2`. Explicit `/api/v1` routes and the original unversioned paths remain supported compatibility routes. Older examples below still work; see the version migration strategy at the end.
 
+All routes except `GET /login` now require HTTP Basic authentication. Demo credentials: `student` / `lab-password`. See the security section below before using Swagger or making write requests.
+
 ## Run
 
 ```bash
@@ -296,3 +298,27 @@ Rollback during this compatible transition means restoring the client's `/api/v1
 
 
 Versioning verification on 2026-10-31 passed 135 live checks, covering both versions and legacy routes, shared-data CRUD, version/deprecation metadata, version-aware links, JSON/XML, conditional GET, unknown-version rejection, and scoped Swagger documents. The verification used a non-default context path containing `/api` to check link construction and removed its test records afterward.
+
+
+## Spring Security and mock login
+
+`SecurityConfiguration` registers one catch-all `SecurityFilterChain`: `/login` is permitted anonymously and every other request must be authenticated. This includes legacy, v1, and v2 resource routes, customer deliveries, Swagger UI, its static assets, `/v3/api-docs`, grouped docs, and `/error`. No public Swagger or static-resource exclusions are configured. Form login, logout, and saved-request sessions are disabled; HTTP Basic credentials are checked for each protected request.
+
+The mock identity is stored by `InMemoryUserDetailsManager`, with a password hashed using the configured `PasswordEncoder`. Defaults for the lab are username **student**, password **lab-password**. Override them with `APP_SECURITY_USERNAME` and `APP_SECURITY_PASSWORD`. No database user table or migration is needed for this mock identity.
+
+`GET /login` is a public JSON endpoint. It does not authenticate the caller or issue a JWT/session: it explains the Basic authentication scheme and returns `csrfHeaderName` and `csrfToken`. Visiting it also sets the matching `XSRF-TOKEN` cookie. Visiting `/login` alone does not grant access to protected APIs. Missing or invalid Basic credentials on a protected GET return 401 with a Basic challenge.
+
+CSRF protection remains enabled because browsers can automatically resend Basic credentials. For POST/PUT/DELETE, supply both Basic authentication and the `X-XSRF-TOKEN` header with the token obtained from `/login`, keeping its matching cookie. Read the latest cookie before each write: authentication can refresh the CSRF token, and stale token/header pairs are rejected. Missing/invalid CSRF tokens return 403. An unauthenticated write can therefore be rejected with 403 before authentication is evaluated. CSRF cookies are not authentication sessions.
+
+### Verify through Swagger UI
+
+1. Start PostgreSQL and the application. In the same browser, open `http://localhost:8080/login` once to obtain the CSRF cookie.
+2. Open `http://localhost:8080/swagger-ui.html`. The browser asks for Basic credentials: use the demo identity above. Documentation is protected as required.
+3. Select v2 and click **Authorize**. Enter the same Basic credentials for Swagger's API requests. Swagger's CSRF integration reads the `XSRF-TOKEN` cookie and sends `X-XSRF-TOKEN` automatically on same-origin requests.
+4. Execute GET for a resource, then create/update/delete a disposable record. Authorized requests retain the existing CRUD behavior. Keep JSON/XML and ETag headers as before.
+5. Verify anonymous access in a private browser window: `/login` works, while a resource URL or Swagger UI prompts for authentication. Cancelling the challenge leaves the request unauthorized.
+
+Successful authenticated API GET responses use `Cache-Control: private, no-cache` and vary by `Authorization`, preserving private ETag revalidation. Login, errors, and write responses use `no-store`. The OpenAPI documents declare HTTP Basic authentication; only the mock login operation is documented without a security requirement.
+
+
+Security verification on 2026-11-04 passed 144 live checks. The verifier enumerated all 73 non-login controller method/path mappings and confirmed anonymous requests were rejected, then checked Swagger resources, OpenAPI groups, invalid credentials, mock-login behavior, CSRF cookie/header enforcement, authenticated CRUD for all four resources, protected XML reads, authenticated 304 responses, and preserved 400/404 errors. Verification ran with a non-default context path and removed its temporary records afterward. The temporary server was stopped after verification.

@@ -13,7 +13,7 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 import java.io.IOException;
 import java.util.Collections;
 
-/** Conditional reads based on the actual serialized API representation. */
+
 public class ApiEtagFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {

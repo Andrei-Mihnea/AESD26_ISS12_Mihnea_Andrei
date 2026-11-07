@@ -8,7 +8,6 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.time.Instant;
 
-/** Response metadata for the explicitly mapped URI versions; never rewrites or retries a request. */
 public class ApiVersionInterceptor implements HandlerInterceptor {
     public static final String VERSION_ATTRIBUTE = ApiVersionInterceptor.class.getName() + ".version";
     private static final String DEPRECATION_DATE = "@" + Instant.parse("2026-10-31T00:00:00Z").getEpochSecond();
