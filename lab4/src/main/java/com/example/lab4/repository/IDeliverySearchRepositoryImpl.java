@@ -1,6 +1,7 @@
 package com.example.lab4.repository;
 
-import com.example.lab4.entity.Customer;
+import com.example.lab4.entity.User;
+import com.example.lab4.entity.Role;
 import com.example.lab4.entity.Delivery;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -29,8 +30,9 @@ public class IDeliverySearchRepositoryImpl implements IDeliverySearchRepository 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<Delivery> query = builder.createQuery(Delivery.class);
         Root<Delivery> delivery = query.from(Delivery.class);
-        Join<Delivery, Customer> customer = delivery.join("customer", JoinType.INNER);
+        Join<Delivery, User> customer = delivery.join("customer", JoinType.INNER);
         List<Predicate> predicates = new ArrayList<>();
+        predicates.add(builder.equal(customer.get("role"), Role.CUSTOMER));
 
         if (criteria.customerId() != null) {
             predicates.add(builder.equal(customer.get("id"), criteria.customerId()));

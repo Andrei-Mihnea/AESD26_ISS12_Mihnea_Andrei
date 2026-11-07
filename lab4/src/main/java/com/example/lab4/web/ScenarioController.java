@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -25,6 +26,7 @@ public class ScenarioController {
 
     @GetMapping
     @Operation(summary = "List all scenarios")
+    @PreAuthorize("hasRole('ADMIN')")
     public List<ScenarioResponse> findAll() { return service.findAllResponses(); }
 
     @GetMapping("/{id}")
@@ -33,6 +35,7 @@ public class ScenarioController {
 
     @PostMapping
     @Operation(summary = "Create a scenario")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public ResponseEntity<ScenarioResponse> create(@Valid @RequestBody ScenarioRequest request) {
         ScenarioResponse response = service.create(request);
         return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
@@ -41,6 +44,7 @@ public class ScenarioController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Replace a scenario's details")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public ScenarioResponse update(@PathVariable Long id, @Valid @RequestBody ScenarioRequest request) {
         return service.update(id, request);
     }
@@ -48,5 +52,6 @@ public class ScenarioController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete a scenario")
+    @PreAuthorize("hasRole('ADMIN')")
     public void delete(@PathVariable Long id) { service.deleteExisting(id); }
 }

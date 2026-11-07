@@ -7,7 +7,7 @@ import com.example.lab4.service.DeliveryService;
 import com.example.lab4.dto.CustomerRequest;
 import com.example.lab4.dto.CustomerResponse;
 
-import com.example.lab4.entity.Customer;
+import com.example.lab4.entity.User;
 import com.example.lab4.service.CustomerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,7 @@ import java.util.List;
 @RequestMapping(value = {"/api/v1/customers", "/api/v2/customers", "/api/customers"},
         produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE})
 @Tag(name = "Customers", description = "Create, read, update and delete customers")
+@PreAuthorize("isAuthenticated()")
 public class CustomerController {
     private final CustomerService customers;
 
@@ -46,6 +48,7 @@ public class CustomerController {
 
     @GetMapping
     @Operation(summary = "List all customers")
+    @PreAuthorize("hasRole('ADMIN')")
     public List<CustomerResponse> findAll() {
         return customers.findAll().stream().map(representations::toResponse).toList();
     }
@@ -82,8 +85,9 @@ public class CustomerController {
 
     @PostMapping(consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE})
     @Operation(summary = "Create a customer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerRequest request) {
-        Customer customer = customers.save(new Customer(request.name(), request.email(), request.phone(),
+        User customer = customers.save(User.customer(request.name(), request.email(), request.phone(),
                 request.address(), request.coordinates()));
         URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
                 .buildAndExpand(customer.getId()).toUri();
@@ -93,6 +97,7 @@ public class CustomerController {
     @PutMapping(value = "/{id}",
             consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_XML_VALUE})
     @Operation(summary = "Replace a customer's details")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public CustomerResponse update(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
         return customers.update(id, request.name(), request.email(), request.phone(),
                         request.address(), request.coordinates())
@@ -102,6 +107,7 @@ public class CustomerController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a customer with no deliveries")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('ADMIN')")
     public void delete(@PathVariable Long id) {
         if (!customers.deleteIfPresent(id)) {
             throw notFound(id);

@@ -18,10 +18,11 @@ public class Vehicle {
     private boolean available = true;
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "driver", unique = true)
-    private Driver driver;
+    private User driver;
 
     protected Vehicle() {}
-    public Vehicle(String name, Integer capacity, Depot depot, boolean available, Driver driver) {
+    public Vehicle(String name, Integer capacity, Depot depot, boolean available, User driver) {
+        if (driver != null) driver.requireRole(Role.DRIVER);
         this.name = name; this.capacity = capacity; this.depot = depot; this.available = available; this.driver = driver;
     }
     public void updateDetails(String name, Integer capacity, boolean available, Depot depot) {
@@ -32,10 +33,12 @@ public class Vehicle {
         this.driver = null;
     }
 
+    public void unassignDriver() { this.driver = null; }
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public Integer getCapacity() { return capacity; }
     public Depot getDepot() { return depot; }
     public boolean isAvailable() { return available; }
-    public Driver getDriver() { return driver; }
+    public User getDriver() { return driver; }
 }

@@ -5,10 +5,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.cache.annotation.EnableCaching;
-import com.example.lab4.entity.Customer;
+import com.example.lab4.entity.User;
 import com.example.lab4.entity.Delivery;
 import com.example.lab4.entity.Depot;
-import com.example.lab4.entity.Driver;
 import com.example.lab4.entity.Vehicle;
 import com.example.lab4.service.CustomerService;
 import com.example.lab4.service.DeliveryService;
@@ -44,12 +43,12 @@ public class Lab4Application {
         return args -> {
             Depot depot = depots.findByName("Demo Depot")
                     .orElseGet(() -> depots.save(new Depot("Demo Depot", "44.4268,26.1025")));
-            Driver driver = drivers.findByEmail("driver@example.com")
-                    .orElseGet(() -> drivers.save(new Driver("Demo Driver", "driver@example.com", "+40987654321")));
+            User driver = drivers.findByEmail("driver@example.com")
+                    .orElseGet(() -> drivers.save(User.driver("Demo Driver", "driver@example.com", "+40987654321")));
             Vehicle vehicle = vehicles.findByName("Demo Vehicle")
                     .orElseGet(() -> vehicles.save(new Vehicle("Demo Vehicle", 100, depot, true, driver)));
-            Customer customer = customers.findByEmail("demo@example.com")
-                    .orElseGet(() -> customers.save(new Customer("Demo Customer", "demo@example.com",
+            User customer = customers.findByEmail("demo@example.com")
+                    .orElseGet(() -> customers.save(User.customer("Demo Customer", "demo@example.com",
                             "+40123456789", "1 Example Street", "44.4320,26.1030")));
 
             String demoDeliveryNote = "Created by the lab4 service layer demo";
@@ -88,9 +87,9 @@ public class Lab4Application {
         }
         depots = depotService.saveAll(depots);
 
-        List<Driver> drivers = new ArrayList<>();
+        List<User> drivers = new ArrayList<>();
         for (int i = 0; i < vehicleCount; i++) {
-            drivers.add(new Driver(faker.name().fullName(), "seed.driver." + i + "@vros.example",
+            drivers.add(User.driver(faker.name().fullName(), "seed.driver." + i + "@vros.example",
                     "+40" + String.format("%09d", 600_000_000 + i)));
         }
         drivers = driverService.saveAll(drivers);
@@ -111,14 +110,14 @@ public class Lab4Application {
     private void seedCustomers(CustomerService customerService, DeliveryService deliveryService,
                                Faker faker, int customerCount, int deliveriesPerCustomer) {
         Set<String> existingEmails = customerService.findAll().stream()
-                .map(Customer::getEmail).collect(Collectors.toSet());
-        List<Customer> customers = new ArrayList<>();
+                .map(User::getEmail).collect(Collectors.toSet());
+        List<User> customers = new ArrayList<>();
         for (int i = 0; i < customerCount; i++) {
             String email = "seed.customer." + i + "@vros.example";
             if (existingEmails.contains(email)) {
                 continue;
             }
-            customers.add(new Customer(faker.name().fullName(), email,
+            customers.add(User.customer(faker.name().fullName(), email,
                     faker.phoneNumber().toString(), faker.address().streetAddress(),
                     randomCoordinates(faker)));
         }

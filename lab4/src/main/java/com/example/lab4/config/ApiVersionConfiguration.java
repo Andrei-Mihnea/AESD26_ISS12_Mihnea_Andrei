@@ -17,19 +17,23 @@ public class ApiVersionConfiguration implements WebMvcConfigurer {
 
     @Bean
     public GroupedOpenApi v1Api() {
-        return GroupedOpenApi.builder().group("v1").pathsToMatch("/api/v1/**")
+        return GroupedOpenApi.builder().group("v1")
+                .pathsToMatch("/api/v1/**", "/login", "/register", "/refresh", "/logout")
                 .addOpenApiCustomizer(api -> {
                     api.info(new Info().title("Routing API v1").version("1")
                             .description("Deprecated but supported. Prefer v2; see README migration strategy."));
-                    api.getPaths().values().forEach(path -> path.readOperations()
-                            .forEach(operation -> operation.setDeprecated(true)));
+                    api.getPaths().forEach((uri, path) -> {
+                        if (uri.startsWith("/api/v1/")) path.readOperations()
+                                .forEach(operation -> operation.setDeprecated(true));
+                    });
                 })
                 .build();
     }
 
     @Bean
     public GroupedOpenApi v2Api() {
-        return GroupedOpenApi.builder().group("v2").pathsToMatch("/api/v2/**")
+        return GroupedOpenApi.builder().group("v2")
+                .pathsToMatch("/api/v2/**", "/login", "/register", "/refresh", "/logout")
                 .addOpenApiCustomizer(api -> api.info(new Info().title("Routing API v2").version("2")
                         .description("Preferred URI version. Currently uses the same DTO contract as v1.")))
                 .build();

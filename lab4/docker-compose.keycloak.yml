@@ -1,0 +1,17 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    container_name: lab4-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: local-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-admin-password
+      KC_HOSTNAME: http://localhost:18081
+    ports:
+      - "127.0.0.1:18081:8080"
+    volumes:
+      - ./keycloak/lab4-realm.json:/opt/keycloak/data/import/lab4-realm.json:ro
+      - lab4-keycloak-data:/opt/keycloak/data
+
+volumes:
+  lab4-keycloak-data:

@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -16,6 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping({"/api/v1/deliveries", "/api/v2/deliveries", "/api/deliveries"})
 @Tag(name = "Deliveries")
+@PreAuthorize("isAuthenticated()")
 public class DeliveryController {
     private final DeliveryService service;
 
@@ -25,6 +27,7 @@ public class DeliveryController {
 
     @GetMapping
     @Operation(summary = "List all deliveries")
+    @PreAuthorize("hasRole('ADMIN')")
     public List<DeliveryResponse> findAll() { return service.findAllResponses(); }
 
     @GetMapping("/{id}")
@@ -33,6 +36,7 @@ public class DeliveryController {
 
     @PostMapping
     @Operation(summary = "Create a delivery")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public ResponseEntity<DeliveryResponse> create(@Valid @RequestBody DeliveryRequest request) {
         DeliveryResponse response = service.create(request);
         return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
@@ -41,6 +45,7 @@ public class DeliveryController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Replace a delivery's details")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")
     public DeliveryResponse update(@PathVariable Long id, @Valid @RequestBody DeliveryRequest request) {
         return service.update(id, request);
     }
@@ -48,5 +53,6 @@ public class DeliveryController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Delete a delivery")
+    @PreAuthorize("hasRole('ADMIN')")
     public void delete(@PathVariable Long id) { service.deleteExisting(id); }
 }

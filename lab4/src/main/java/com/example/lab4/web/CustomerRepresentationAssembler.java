@@ -2,7 +2,7 @@ package com.example.lab4.web;
 
 import com.example.lab4.dto.CustomerResponse;
 import com.example.lab4.dto.ResourceLink;
-import com.example.lab4.entity.Customer;
+import com.example.lab4.entity.User;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -13,7 +13,7 @@ import java.util.Map;
 /** Builds navigation links at the HTTP boundary, leaving entities independent of request URLs. */
 @Component
 public class CustomerRepresentationAssembler {
-    public CustomerResponse toResponse(Customer customer) {
+    public CustomerResponse toResponse(User customer) {
         String version = (String) RequestContextHolder.currentRequestAttributes()
                 .getAttribute(ApiVersionInterceptor.VERSION_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
         String collection = ServletUriComponentsBuilder.fromCurrentServletMapping()

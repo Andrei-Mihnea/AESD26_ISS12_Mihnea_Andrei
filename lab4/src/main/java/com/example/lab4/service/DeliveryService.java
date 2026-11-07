@@ -2,9 +2,10 @@ package com.example.lab4.service;
 
 import com.example.lab4.exception.ResourceNotFoundException;
 
-import com.example.lab4.entity.Customer;
+import com.example.lab4.entity.User;
 import com.example.lab4.entity.Delivery;
-import com.example.lab4.repository.CustomerRepository;
+import com.example.lab4.repository.UserRepository;
+import com.example.lab4.entity.Role;
 import com.example.lab4.repository.DeliverySearchCriteria;
 import com.example.lab4.repository.IDeliveryRepository;
 import com.example.lab4.dto.DeliveryRequest;
@@ -20,9 +21,9 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class DeliveryService {
     private final IDeliveryRepository deliveryRepository;
-    private final CustomerRepository customers;
+    private final UserRepository customers;
 
-    public DeliveryService(IDeliveryRepository deliveryRepository, CustomerRepository customers) {
+    public DeliveryService(IDeliveryRepository deliveryRepository, UserRepository customers) {
         this.deliveryRepository = deliveryRepository;
         this.customers = customers;
     }
@@ -66,8 +67,8 @@ public class DeliveryService {
         deliveryRepository.flush();
     }
 
-    private Customer customer(Long id) {
-        return customers.findById(id).orElseThrow(() ->
+    private User customer(Long id) {
+        return customers.findByIdAndRole(id, Role.CUSTOMER).orElseThrow(() ->
                 new ResourceNotFoundException("Customer", id));
     }
 

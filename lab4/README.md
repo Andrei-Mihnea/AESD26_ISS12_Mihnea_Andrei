@@ -4,18 +4,18 @@ Spring Boot + Spring Data JPA project backed by PostgreSQL. Flyway applies versi
 
 The preferred API prefix is `/api/v2`. Explicit `/api/v1` routes and the original unversioned paths remain supported compatibility routes. Older examples below still work; see the version migration strategy at the end.
 
-All routes except `GET /login` now require HTTP Basic authentication. Demo credentials: `student` / `lab-password`. See the security section below before using Swagger or making write requests.
+The default `prod` profile keeps security enabled: list-all endpoints require ADMIN, vehicle/scenario reads by ID are public, customer/delivery reads by ID require a Bearer JWT, and POST/PUT require an ADMIN, CUSTOMER or DRIVER role, and DELETE requires ADMIN. In `dev`, list-all HTTP endpoints still require ADMIN; other endpoint authorization is bypassed. Public `POST /register` creates CUSTOMER accounts. Open Swagger, execute public `POST /login`, and paste the returned accessToken into Authorize → bearerAuth. Demo administrator credentials remain `student` / `lab-password`.
 
 ## Run
 
 ```bash
 docker compose up -d
-./mvnw spring-boot:run
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 The `db` service exposes PostgreSQL on `localhost:5432` with database/user/password `lab4`. The application uses those settings by default and can be pointed elsewhere with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`.
 
-On startup, a `CommandLineRunner` exercises all five services by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. DataFaker also creates 10 depots, 50 drivers and vehicles, 1,000 customers, and 3,000 deliveries on the first run. Existing generated customer emails are skipped on restart. Increasing `APP_SEED_CUSTOMERS` adds the missing generated customers and their deliveries without duplicating the existing batch. The demo customer and manually created customers are additional to this generated customer target; lowering the target does not delete data. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
+On startup, a `CommandLineRunner` exercises all five services by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. With `dev`, DataFaker also creates 10 depots, 50 drivers and vehicles, 1,000 customers, and 3,000 deliveries on the first run. Existing generated customer emails are skipped on restart. Increasing `APP_SEED_CUSTOMERS` adds the missing generated customers and their deliveries without duplicating the existing batch. The demo customer and manually created customers are additional to this generated customer target; lowering the target does not delete data. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
 
 ## Routing scenarios
 
@@ -78,7 +78,7 @@ Also check error responses through **Try it out**: submit a blank name or invali
 
 ## Repository queries
 
-- **Derived query:** `CustomerRepository.findByEmail` looks up a customer by its unique email.
+- **Derived query:** `UserRepository.findByEmailAndRole` looks up a customer by its unique email.
 - **JPQL query:** `VehicleRepository.findAvailableAtDepot` lists available vehicles assigned to a depot.
 - **Transactional modifying query:** `VehicleRepository.updateAvailability` updates a vehicle's availability by ID and returns the number of affected rows. It runs inside a transaction and clears/flushes the persistence context around the bulk update.
 - **Criteria API search:** `DeliveryService.search(DeliverySearchCriteria)` supports any combination of customer ID, area text matched against customer address or coordinates, quantity greater than a threshold, minimum/maximum quantity, case-insensitive notes text, timestamp bounds, and a specific registration date. Date-only searches use UTC day boundaries. Null or blank text filters are ignored, and results are ordered newest first.
@@ -215,6 +215,10 @@ Spring Boot's Flyway starter and the PostgreSQL Flyway module run migrations aut
 
 1. `V1__create_delivery_domain.sql`: depots, drivers, vehicles, customers, deliveries, and their indexes/constraints.
 2. `V2__add_routing_scenarios.sql`: scenarios and the vehicle/delivery membership tables and indexes.
+3. `V3__add_application_user_roles.sql`: historical role migration.
+4. `V4__consolidate_application_users.sql`: historical consolidation into shared identities.
+5. `V5__store_all_user_roles_in_one_table.sql`: single users table with role-based identities.
+6. `V6__add_database_login_credentials.sql`: database usernames, password hashes, and enabled flags.
 
 Flyway stores applied versions, checksums, and execution results in `flyway_schema_history`. Subsequent starts validate the recorded checksums and apply only pending migrations. Hibernate remains configured with `ddl-auto=validate`; basic SQL initialization is disabled, and `schema.sql` has been replaced by the versioned files. DataFaker still populates application data after migrations and JPA initialization.
 
@@ -238,7 +242,7 @@ To inspect migration history in the local Docker database:
 docker compose exec db psql -U lab4 -d lab4 -c 'SELECT installed_rank, version, description, type, success FROM flyway_schema_history ORDER BY installed_rank;'
 ```
 
-For later schema changes, add `V3__describe_change.sql`, then V4, and so on. Do not edit already applied migrations: checksum validation detects changes and prevents startup. Flyway clean is disabled to protect existing data.
+For later schema changes, add `V7__describe_change.sql`, then V8, and so on. Do not edit already applied migrations: checksum validation detects changes and prevents startup. Flyway clean is disabled to protect existing data.
 
 
 Migration verification on 2026-10-31 passed 15 checks: fresh V1/V2 application, repeat migration with no pending work, Hibernate validation on a fresh schema, rejection of an unbaselined nonempty schema, explicit baseline-0 adoption, preservation of legacy rows, checksum mismatch detection, adoption of the existing local lab4 schema, and normal startup afterward. Row counts and ordered row-content hashes for all eight domain/join tables were identical before and after adopting the local database. Verification schemas were removed afterward.
@@ -283,7 +287,7 @@ The same URI prefixes apply to `vehicles`, `deliveries`, and `scenarios`. Unknow
 
 ### Swagger documentation
 
-Select **v1** or **v2** in Swagger UI's definition selector. The versioned OpenAPI documents are `/v3/api-docs/v1` and `/v3/api-docs/v2`; the ungrouped `/v3/api-docs` still lists all mappings. Conditional GET headers and 304 responses are documented for both groups. JSON/XML content negotiation for customers is independent of URI versioning.
+Select **v1** or **v2** in Swagger UI's definition selector. The versioned OpenAPI documents are `/v3/api-docs/v1` and `/v3/api-docs/v2`; the ungrouped `/v3/api-docs` still lists all mappings. Both definitions include the same shared authentication endpoints and Bearer security scheme; there is no separate authentication definition. Conditional GET headers and 304 responses are documented for both groups. JSON/XML content negotiation for customers is independent of URI versioning.
 
 ### Transition clients from v1 to v2
 
@@ -300,25 +304,204 @@ Rollback during this compatible transition means restoring the client's `/api/v1
 Versioning verification on 2026-10-31 passed 135 live checks, covering both versions and legacy routes, shared-data CRUD, version/deprecation metadata, version-aware links, JSON/XML, conditional GET, unknown-version rejection, and scoped Swagger documents. The verification used a non-default context path containing `/api` to check link construction and removed its test records afterward.
 
 
-## Spring Security and mock login
+## Spring Security and JWT login
 
-`SecurityConfiguration` registers one catch-all `SecurityFilterChain`: `/login` is permitted anonymously and every other request must be authenticated. This includes legacy, v1, and v2 resource routes, customer deliveries, Swagger UI, its static assets, `/v3/api-docs`, grouped docs, and `/error`. No public Swagger or static-resource exclusions are configured. Form login, logout, and saved-request sessions are disabled; HTTP Basic credentials are checked for each protected request.
+`SecurityConfiguration` uses Spring Security OAuth2 Resource Server JWT validation and the role policy below. `/login`, registration, refresh/logout, Swagger UI, and OpenAPI documents are public. HTTP Basic, form login, saved requests, logout sessions, and authentication cookies are disabled. The session policy is stateless. Tokens are read only from the Authorization Bearer header, not from a query parameter or cookie. CSRF is disabled for this header-only authentication model; the old XSRF cookie/header workflow is removed.
 
-The mock identity is stored by `InMemoryUserDetailsManager`, with a password hashed using the configured `PasswordEncoder`. Defaults for the lab are username **student**, password **lab-password**. Override them with `APP_SECURITY_USERNAME` and `APP_SECURITY_PASSWORD`. No database user table or migration is needed for this mock identity.
+1. Open `http://localhost:8080/swagger-ui/index.html` without signing in.
+2. Keep **v2** selected (or choose v1). Under the **Authentication** tag, expand **POST /login**, click **Try it out**, and submit your username/password as JSON.
+3. Copy only `accessToken` from the response. Click **Authorize**, paste it into **bearerAuth** without the `Bearer ` prefix, and authorize. Login and the routing endpoints are in the same definition, so no switching is needed.
+4. Execute API operations. ADMIN, CUSTOMER and DRIVER can create/update resources. Only ADMIN can delete.
+5. When the access token expires, call public **POST /refresh** with `{"refreshToken":"<current-refresh-token>"}`, replace both tokens, and paste the new accessToken into Authorize. Use **POST /logout** with the refresh token to revoke that refresh session.
 
-`GET /login` is a public JSON endpoint. It does not authenticate the caller or issue a JWT/session: it explains the Basic authentication scheme and returns `csrfHeaderName` and `csrfToken`. Visiting it also sets the matching `XSRF-TOKEN` cookie. Visiting `/login` alone does not grant access to protected APIs. Missing or invalid Basic credentials on a protected GET return 401 with a Basic challenge.
+There is no custom login page or automatic token management. GET /login returns JSON instructions. The refresh token belongs only in the refresh/logout request body, never in Swagger's Bearer field.
 
-CSRF protection remains enabled because browsers can automatically resend Basic credentials. For POST/PUT/DELETE, supply both Basic authentication and the `X-XSRF-TOKEN` header with the token obtained from `/login`, keeping its matching cookie. Read the latest cookie before each write: authentication can refresh the CSRF token, and stale token/header pairs are rejected. Missing/invalid CSRF tokens return 403. An unauthenticated write can therefore be rejected with 403 before authentication is evaluated. CSRF cookies are not authentication sessions.
+Successful authenticated API GET responses use private revalidation and vary by Authorization, retaining ETag behavior. Login responses and other sensitive responses use no-store.
 
-### Verify through Swagger UI
+## Application users and roles
 
-1. Start PostgreSQL and the application. In the same browser, open `http://localhost:8080/login` once to obtain the CSRF cookie.
-2. Open `http://localhost:8080/swagger-ui.html`. The browser asks for Basic credentials: use the demo identity above. Documentation is protected as required.
-3. Select v2 and click **Authorize**. Enter the same Basic credentials for Swagger's API requests. Swagger's CSRF integration reads the `XSRF-TOKEN` cookie and sends `X-XSRF-TOKEN` automatically on same-origin requests.
-4. Execute GET for a resource, then create/update/delete a disposable record. Authorized requests retain the existing CRUD behavior. Keep JSON/XML and ETag headers as before.
-5. Verify anonymous access in a private browser window: `/login` works, while a resource URL or Swagger UI prompts for authentication. Cancelling the challenge leaves the request unauthorized.
+`User` is the only user entity and maps directly to `users`. There are no Customer, Driver, or Administrator entity classes, no inheritance/discriminator mapping, and no separate profile tables. The role is an ordinary `@Enumerated(EnumType.STRING)` field with values CUSTOMER, DRIVER, and ADMIN.
 
-Successful authenticated API GET responses use `Cache-Control: private, no-cache` and vary by `Authorization`, preserving private ETag revalidation. Login, errors, and write responses use `no-store`. The OpenAPI documents declare HTTP Basic authentication; only the mock login operation is documented without a security requirement.
+All contact fields, optional address/coordinates, the deliveries collection, and the vehicle relationship are declared on User. Create domain identities with `User.customer(...)`, `User.driver(...)`, or `new User(name, email, phone)` for ADMIN. Roles have no public setter. `updateCustomerDetails` requires CUSTOMER, delivery construction requires CUSTOMER, and assigning a vehicle driver requires DRIVER.
+
+`UserRepository` is the only user repository. `CustomerService` and `DriverService` remain logical role-specific services, using explicit `findByIdAndRole`, `findByEmailAndRole`, and `findAllByRole` queries. They reject saves for the wrong role and scope updates/deletes so that a driver/admin ID cannot be treated as a customer. Customer caching and eviction remain in CustomerService. The customer REST DTOs/routes and HATEOAS links are unchanged.
+
+Delivery relationships and Criteria API joins now target User directly. The delivery service resolves only CUSTOMER users, while database constraints still require CUSTOMER delivery references and DRIVER vehicle assignments. Required customer address/coordinates, per-role email uniqueness, unique driver phone numbers, and driver-deletion unassignment remain enforced.
+
+Flyway V5 already provides this physical schema, so removing Java subclasses requires no additional migration or data changes. Historical migration files remain unchanged. The JMH benchmark now compares the cached customer service against `UserRepository.findByEmailAndRole(email, Role.CUSTOMER)`. Servlet security configuration is conditional on a web application so the benchmark's non-web Spring context can start.
+
+Authentication now loads these same domain user rows from the database; see the database authentication section.
 
 
-Security verification on 2026-11-04 passed 144 live checks. The verifier enumerated all 73 non-login controller method/path mappings and confirmed anonymous requests were rejected, then checked Swagger resources, OpenAPI groups, invalid credentials, mock-login behavior, CSRF cookie/header enforcement, authenticated CRUD for all four resources, protected XML reads, authenticated 304 responses, and preserved 400/404 errors. Verification ran with a non-default context path and removed its temporary records afterward. The temporary server was stopped after verification.
+## Database-backed users and roles
+
+Flyway V6 adds a globally unique nullable username, nullable password_hash, and enabled flag to users. Existing identities remain intact and initially disabled for login until credentials are configured. Login usernames are separate from email because the domain permits the same email across different roles.
+
+`DatabaseUserDetailsService` implements Spring Security's `UserDetailsService`: it queries `UserRepository.findByUsername`, copies the stored password hash and enabled flag, and converts the stored role to ROLE_ADMIN, ROLE_CUSTOMER, or ROLE_DRIVER. `DaoAuthenticationProvider` checks the supplied password through the BCrypt-backed delegating PasswordEncoder. There is no InMemoryUserDetailsManager or fallback account. Database credential checks remain in place; successful POST /login now issues a JWT and subsequent requests use Bearer authentication.
+
+The one-time `DemoAccountInitializer` configures these database rows by default:
+
+| Login username | Initial password | Stored role | Domain identity |
+| --- | --- | --- | --- |
+| student | lab-password | ADMIN | admin@example.com |
+| customer | customer-password | CUSTOMER | demo@example.com |
+| driver | driver-password | DRIVER | driver@example.com |
+
+The existing APP_SECURITY_USERNAME / APP_SECURITY_PASSWORD options configure the administrator's first bootstrap. APP_SECURITY_CUSTOMER_USERNAME/PASSWORD and APP_SECURITY_DRIVER_USERNAME/PASSWORD configure the other two initial logins. APP_SECURITY_BOOTSTRAP_ENABLED=false disables this initializer. These settings are initial provisioning inputs: restarting does not reset passwords, rename existing logins, or re-enable disabled accounts. Domain/DataFaker seeding remains separate; generated users are not all given a shared password.
+
+For other users, the internal `UserService.configureLogin(id, username, rawPassword)` encodes the password before storing it and enables login; `disableLogin(id)` disables it without deleting the domain identity. No public credential-management endpoint is added. Customer request DTOs cannot set username, password, enabled, or role. Password hashes are omitted from serialization and are never included in REST DTOs.
+
+Sign in through /login using any of the three configured database logins. JWT roles become Spring authorities, and `hasAnyRole("ADMIN", "CUSTOMER", "DRIVER")` permits any application role before a controller executes.
+
+| Endpoints (all three API prefixes) | Access |
+| --- | --- |
+| GET/HEAD list-all customers, vehicles, deliveries and scenarios | ADMIN only |
+| GET/HEAD vehicles and scenarios by ID | Public |
+| GET/HEAD customers/deliveries by ID and a customer’s deliveries | Any authenticated role |
+| POST/PUT API resources (PATCH also guarded) | ADMIN, CUSTOMER or DRIVER |
+| DELETE API resources | ADMIN only |
+| Swagger UI and OpenAPI documents | Public |
+| GET/POST /login, POST /register, /refresh, /logout | Public; each authentication endpoint validates its own credentials |
+
+Customer and delivery reads stay protected because they expose contact details or customer-linked delivery information. All three application roles can read individual resources and create/update; only ADMIN can list all resources or delete. Anonymous protected requests return 401; authenticated callers without an application role receive 403 on writes. Rules cover `/api`, `/api/v1`, and `/api/v2`.
+
+
+## JWT authentication
+
+`POST /login` accepts JSON:
+
+```json
+{"username":"student","password":"lab-password"}
+```
+
+A successful response includes accessToken, tokenType (Bearer), expiresIn (900 seconds by default), expiresAt, username, and role. Bad credentials and disabled accounts return 401; invalid bodies return 400. GET /login returns JSON usage instructions; POST /login is the public authentication endpoint.
+
+`LoginService` authenticates through the database-backed DaoAuthenticationProvider and signs an HS256 JWT. Claims include sub (username), uid (user ID), roles, iss, aud, iat, nbf, exp, and jti. No password or password hash is included. `JwtConfiguration` validates the signature with an explicitly selected algorithm, issuer, audience, timestamps, and required identity/role claims. Spring maps roles to ROLE_ADMIN, ROLE_CUSTOMER, or ROLE_DRIVER.
+
+Send the token in the Authorization header as `Bearer <accessToken>` for protected API requests. Missing, malformed, expired, incorrectly signed, or invalid-claim tokens return 401. HTTP Basic credentials no longer grant API access. Access tokens carry a role snapshot and remain valid until expiry even if the account is later disabled or its role/password changes. Refresh tokens rotate and recheck the current account, password fingerprint, and role; see the access/refresh section below. Re-authentication checks the latest database state. Spring permits a small clock-skew allowance during timestamp validation.
+
+Signing configuration:
+
+- JWT_SECRET: Base64-encoded random key of at least 32 bytes. When unset, a secure key is generated per process, invalidating earlier tokens after restart. Set the same secret across restarts/instances for stable validation.
+- JWT_ISSUER: defaults to lab4.
+- JWT_AUDIENCE: defaults to lab4-api.
+- JWT_TTL_SECONDS: defaults to 900 and must be positive.
+
+For a stable local key, generate it outside source control, for example `export JWT_SECRET="$(openssl rand -base64 32)"`, then start the app from that environment. Tokens and signing keys must not be committed. Flyway V7 stores hashed refresh sessions; access JWTs remain stateless.
+
+
+## BCrypt password storage and registration
+
+`POST /register` is public and accepts JSON:
+
+```json
+{
+  "username": "new.customer",
+  "password": "a-long-demo-password",
+  "name": "New Customer",
+  "email": "new.customer@example.com",
+  "phone": "+40123456789",
+  "address": "1 Example Street",
+  "coordinates": "44.4320,26.1030"
+}
+```
+
+A successful registration returns 201 with `id`, `username`, and `role: CUSTOMER`. It creates an enabled user in the existing `users` table, including the required customer contact details. Role, ID, enabled status, and password hash are chosen by the server, never copied from request fields. Registration does not claim or enable an existing customer identity. ADMIN and DRIVER accounts continue to be provisioned internally.
+
+`RegistrationService` uses the same injected PasswordEncoder as login and account provisioning. The delegating encoder defaults to BCrypt with cost 10, producing a fresh random salt for every password and storing only `{bcrypt}$2...` in `users.password_hash`. Login calls `matches` through DaoAuthenticationProvider; raw passwords are never saved or returned. No schema migration is required because V6 already provides the credentials columns.
+
+Bean Validation requires usernames of 3–64 ASCII letters/digits/dots/underscores/hyphens, a password of at least 8 characters and at most 72 UTF-8 bytes (BCrypt's limit), valid email, and the required customer details. Usernames and email uniqueness follow the existing case-sensitive database rules; email is unique within CUSTOMER users. Missing/malformed/invalid input returns 400. An existing username or customer email returns 409; database constraints also prevent concurrent duplicate registration. Successful registration evicts the customer email cache so a previously cached missing customer becomes visible.
+
+Open public Swagger and expand **POST /register** under the **Authentication** tag in either API version, and submit a unique account. Then call **POST /login** with that username/password and paste the returned accessToken into Authorize → bearerAuth. CUSTOMER tokens can read individual resources and create/update; list-all and DELETE return 403.
+
+
+## Method-level authorization
+
+`MethodSecurityConfiguration` enables `@EnableMethodSecurity`. The create/update methods on CustomerController, DeliveryController, VehicleController, and ScenarioController declare `@PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER', 'DRIVER')")`. CustomerController and DeliveryController also declare class-level `@PreAuthorize("isAuthenticated()")` for their reads; the stricter method annotations override that default for writes. Vehicle and scenario reads by ID remain public. All four findAll methods require ADMIN. Login and registration remain public under the HTTP policy.
+
+Spring wraps these controller beans in authorization proxies. Before a protected method executes, its proxy evaluates the expression against SecurityContextHolder, populated from the validated JWT by Spring Security. The create/update expression accepts ROLE_ADMIN, ROLE_CUSTOMER or ROLE_DRIVER. Delete methods use `@PreAuthorize("hasRole('ADMIN')")`, requiring ROLE_ADMIN. Rejected calls do not reach the service. The existing HTTP filter rules remain a first layer; method checks also work when the Spring-managed controller is called directly without an HTTP request. These annotations protect controller entry points; internal service methods remain available to startup seeding. As with proxy-based transactions, callers must use the Spring bean: constructing a controller manually or self-invoking a method bypasses the proxy.
+
+Run `./mvnw test` inside lab4. `MethodSecurityTest` checks real Spring controller proxies with mocked services and no HTTP security filter chain. It verifies create/update for each application role, ADMIN-only deletion, rejection of anonymous/missing/unauthenticated/unknown roles, ADMIN-only list-all methods, authenticated customer/delivery reads by ID, and public vehicle/scenario reads by ID.
+
+
+## Dev and prod profiles
+
+`application.properties` selects `prod` as the default profile. Profile-specific settings live in `application-dev.properties` and `application-prod.properties`.
+
+| Behavior | dev | prod (default) |
+| --- | --- | --- |
+| HTTP authorization | List-all endpoints require a valid ADMIN JWT; other routes are permitted | JWT authentication and existing role rules |
+| Method authorization | Disabled, including class-level and method-level @PreAuthorize | Enabled |
+| Swagger/OpenAPI | Public; list-all operations document ADMIN authentication | Public; API authentication and role requirements documented |
+| Bulk DataFaker seed | On by default | Off by default |
+| Demo login bootstrap | On by default | Off by default |
+
+Run from lab4:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+For a packaged application:
+
+```bash
+java -jar target/lab4-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
+java -jar target/lab4-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+```
+
+Alternatively set `SPRING_PROFILES_ACTIVE=dev` or `prod` in the environment or the IDE's active profiles. In dev, open `http://localhost:8080/swagger-ui/index.html` directly. List-all operations require login and an ADMIN access token; other endpoints can be called without signing in. Database constraints and Bean Validation still apply, registration still hashes passwords, and POST /login still verifies credentials when explicitly called.
+
+`DevSecurityConfiguration` is active only for `dev & !prod`. `SecurityConfiguration` and `MethodSecurityConfiguration` use `!dev | prod`, keeping authorization on when no dev profile is selected or when both dev and prod are accidentally active. A permit-all HTTP chain alone would not bypass @PreAuthorize; excluding the method-security configuration is also required.
+
+Existing users and domain data are retained between profiles. `APP_SEED_ENABLED` and `APP_SECURITY_BOOTSTRAP_ENABLED` can explicitly override their profile defaults. Prod does not create the demo login credentials unless bootstrap is enabled; provision administrator accounts internally or enable the bootstrap explicitly for a lab demonstration. The existing small service-layer startup demo remains in both profiles; disabling bulk seeding does not disable that runner. Production JWT signing continues to use the documented JWT_SECRET setting.
+
+
+## Access and refresh tokens
+
+Local `POST /login` now returns `accessToken`, `tokenType`, `expiresIn`, `expiresAt`, `username`, `role`, **refreshToken**, and **refreshExpiresAt**. Existing access-token response fields remain compatible.
+
+- Access JWT: 15 minutes by default (`JWT_TTL_SECONDS`), carries `token_use: access`, and is sent as `Authorization: Bearer ...` to API endpoints.
+- Refresh token: a random 256-bit opaque value, with a seven-day absolute session lifetime (`JWT_REFRESH_TTL_SECONDS`). It cannot authenticate API requests.
+
+Call public `POST /refresh` with `{"refreshToken":"<current-refresh-token>"}` to receive a new access/refresh pair. No valid access token is needed, so this works after access expiry. Replace the stored refresh token immediately: it is single-use. Rotation preserves the original session expiry rather than extending it indefinitely. `POST /logout` with the same JSON body revokes that local refresh-token family and returns 204; unknown tokens are ignored. Refresh tokens never belong in the Authorization header or query string.
+
+Flyway `V7__add_refresh_tokens.sql` creates refresh_tokens linked to users with cascading deletion. The database stores SHA-256 hashes, not raw refresh tokens. Row locks serialize refresh/logout for a user; used tokens are retained so replay can revoke the whole family. The replay revocation commits even though the request returns 401. Refresh checks enabled status and the current password fingerprint, then issues the current database role. Disabled accounts, changed passwords, expired/revoked tokens and replay are rejected. Separate logins create separate families. Logout/replay revokes refresh capability; already issued access JWTs remain valid until their short expiry (plus timestamp clock skew).
+
+Use Swagger's public login and refresh endpoints and manually replace accessToken in Authorize after a refresh. There is no custom browser page or automatic refresh. Expired refresh-token records can be pruned after their absolute expiry; live consumed records support replay detection.
+
+## Keycloak OIDC integration
+
+The application supports the local issuer **and** an optional fixed Keycloak issuer. Start the included local IdP from lab4:
+
+```bash
+docker compose -f docker-compose.keycloak.yml up -d
+OIDC_ISSUER_URI=http://localhost:18081/realms/lab4 ./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+The application still needs PostgreSQL running. The separate Keycloak Compose file runs the pinned 26.8.2 image on loopback port 18081, imports `keycloak/lab4-realm.json`, and preserves its own data volume. This Compose setup uses Keycloak's development mode and demonstration credentials for the local lab. Realm imports skip an existing realm on restart; manage later changes in Keycloak or import into a fresh dedicated instance. The normal prod profile still disables demo provisioning; existing local accounts continue working.
+
+Open Swagger, click **Authorize**, select the **keycloak** scheme with the openid scope, and authenticate through Keycloak. Swagger handles the authorization-code callback and supplies its access token to API requests. Demo realm users are `kc-admin`, `kc-customer`, and `kc-driver`, each with password `local-demo-password`, mapped to ADMIN, CUSTOMER, DRIVER respectively. The local Keycloak administration console uses `local-admin` / `local-admin-password`; it is separate from the application ADMIN role.
+
+The public browser client `lab4-web` uses Authorization Code with mandatory S256 PKCE and the `openid profile` scopes. There is no browser client secret, implicit flow, or direct password grant. Swagger manages the OAuth state, PKCE verifier, authorization-code exchange, and token handling. No custom login JavaScript is included. Keycloak refresh tokens rotate at its own token endpoint; local `/refresh` handles only local refresh tokens. Use Keycloak's revocation/logout endpoints for IdP sessions; local POST /logout handles local refresh sessions only.
+
+The imported client has exact redirect URIs and web origins for application ports 8080 and 18080, includes the `basic` scope for the subject claim, and adds `lab4-api` to the access-token audience. Extend those allowlists explicitly when using a different host/port. For a deployed IdP, configure its HTTPS issuer, actual redirect origins, and signing-key lifecycle rather than using the local demonstration server.
+
+Settings:
+
+- `OIDC_ISSUER_URI`: blank disables the second issuer; local example `http://localhost:18081/realms/lab4`.
+- `OIDC_AUDIENCE`: defaults to `lab4-api`.
+- `OIDC_CLIENT_ID`: defaults to `lab4-web` (public PKCE client).
+
+`JwtConfiguration` selects between two fixed validators by issuer; an unverified issuer never supplies a network URL. Local tokens use HS256 with identity/role/access-purpose checks. Keycloak access tokens use RS256, the configured realm's JWKS, exact issuer, API audience, expiry/subject validation, and the Bearer access-token purpose. ID and refresh tokens cannot be used as API access tokens. `ApplicationJwtAuthoritiesConverter` maps only ADMIN/CUSTOMER/DRIVER from `realm_access.roles` and `resource_access[OIDC_AUDIENCE].roles` to Spring ROLE_ authorities. Other clients' roles and arbitrary role names do not grant privileges. Existing HTTP and @PreAuthorize rules apply equally to local and Keycloak access tokens.
+
+Keycloak identities remain IdP-managed; they are not matched to local users by email and are not automatically inserted into the domain users table. Local registration, BCrypt credentials, customers/drivers, and local login remain available independently. The dev profile bypasses general authorization, but its HTTP chain validates Bearer tokens and requires ADMIN for collection list-all reads.
+
+Swagger documents login/register/refresh/logout under the **Authentication** tag in both v1 and v2 and adds a Keycloak authorization-code scheme when configured. Swagger is public; use bearerAuth for manually copied local access tokens or the keycloak OAuth client for PKCE sign-in.
+
+Implementation references: [Keycloak OIDC endpoints](https://www.keycloak.org/securing-apps/oidc-layers), [Keycloak Docker/import](https://www.keycloak.org/server/containers), [Swagger OAuth/PKCE configuration](https://swagger.io/docs/open-source-tools/swagger-ui/usage/oauth2/).
+Verification of the simplified flow: 35 automated tests and 75 live API checks passed. Public Swagger and POST /login, create/update for all three application roles, non-admin delete rejection, and ADMIN deletion were verified. The browser workflow was also tested by logging in through Swagger and pasting the returned access token into the selected v2 definition, then receiving 200 from a protected customer GET. The custom page is absent from the clean packaged artifact. Disposable CRUD resources and temporary servers were removed afterward.
+
+List-all authorization verification passed 43 automated tests and 124 live checks. Collection GET/HEAD requests across `/api`, `/api/v1`, and `/api/v2` return 401 anonymously, 403 for CUSTOMER/DRIVER, and 200 for ADMIN, including requests with query parameters. Individual-resource access and public Swagger were preserved. The dev profile now enforces the same HTTP list-all restriction, while bypassing other endpoint authorization.
+
+List-all rules apply to both dev and prod: anonymous GET/HEAD collections return 401, non-admin tokens return 403, and ADMIN tokens succeed. In dev this exception is enforced by the HTTP filter chain; general @PreAuthorize enforcement remains disabled for the development bypass. The test suite passed 49 tests, including dev GET/HEAD collection checks across all API versions and verification that other dev routes still allow anonymous access.

@@ -1,8 +1,9 @@
 package com.example.lab4.benchmark;
 
 import com.example.lab4.Lab4Application;
-import com.example.lab4.entity.Customer;
-import com.example.lab4.repository.CustomerRepository;
+import com.example.lab4.entity.User;
+import com.example.lab4.entity.Role;
+import com.example.lab4.repository.UserRepository;
 import com.example.lab4.service.CustomerService;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -36,7 +37,7 @@ public class CustomerReadBenchmark {
 
         private ConfigurableApplicationContext context;
         private CustomerService customerService;
-        private CustomerRepository customerRepository;
+        private UserRepository customerRepository;
 
         @Setup(Level.Trial)
         public void startSpring() {
@@ -44,7 +45,7 @@ public class CustomerReadBenchmark {
                     .web(WebApplicationType.NONE)
                     .run("--app.seed.enabled=false", "--logging.level.root=WARN");
             customerService = context.getBean(CustomerService.class);
-            customerRepository = context.getBean(CustomerRepository.class);
+            customerRepository = context.getBean(UserRepository.class);
             customerService.findByEmail(EMAIL).orElseThrow(
                     () -> new IllegalStateException("Demo customer is missing; start PostgreSQL and run the app once first."));
         }
@@ -61,12 +62,12 @@ public class CustomerReadBenchmark {
     }
 
     @Benchmark
-    public Customer cachedServiceRead(SpringState state) {
+    public User cachedServiceRead(SpringState state) {
         return state.customerService.findByEmail(SpringState.EMAIL).orElseThrow();
     }
 
     @Benchmark
-    public Customer uncachedRepositoryRead(SpringState state) {
-        return state.customerRepository.findByEmail(SpringState.EMAIL).orElseThrow();
+    public User uncachedRepositoryRead(SpringState state) {
+        return state.customerRepository.findByEmailAndRole(SpringState.EMAIL, Role.CUSTOMER).orElseThrow();
     }
 }

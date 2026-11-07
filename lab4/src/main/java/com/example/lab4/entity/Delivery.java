@@ -10,7 +10,7 @@ public class Delivery {
     private Long id;
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "customer", nullable = false)
-    private Customer customer;
+    private User customer;
     @Column(nullable = false)
     private Integer quantity;
     @Column(columnDefinition = "TEXT")
@@ -19,10 +19,12 @@ public class Delivery {
     private OffsetDateTime timestamp;
 
     protected Delivery() {}
-    public Delivery(Customer customer, Integer quantity, String notes, OffsetDateTime timestamp) {
+    public Delivery(User customer, Integer quantity, String notes, OffsetDateTime timestamp) {
+        customer.requireRole(Role.CUSTOMER);
         this.customer = customer; this.quantity = quantity; this.notes = notes; this.timestamp = timestamp;
     }
-    public void updateDetails(Customer customer, Integer quantity, String notes, OffsetDateTime timestamp) {
+    public void updateDetails(User customer, Integer quantity, String notes, OffsetDateTime timestamp) {
+        customer.requireRole(Role.CUSTOMER);
         this.customer = customer;
         this.quantity = quantity;
         this.notes = notes;
@@ -30,7 +32,7 @@ public class Delivery {
     }
 
     public Long getId() { return id; }
-    public Customer getCustomer() { return customer; }
+    public User getCustomer() { return customer; }
     public Integer getQuantity() { return quantity; }
     public String getNotes() { return notes; }
     public OffsetDateTime getTimestamp() { return timestamp; }

@@ -1,0 +1,123 @@
+{
+  "realm": "lab4",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN"
+      },
+      {
+        "name": "CUSTOMER"
+      },
+      {
+        "name": "DRIVER"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "lab4-web",
+      "name": "Lab4 OIDC PKCE client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/swagger-ui/oauth2-redirect.html",
+        "http://localhost:18080/swagger-ui/oauth2-redirect.html"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://localhost:18080"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "lab4-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "kc-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Keycloak",
+      "lastName": "Admin",
+      "email": "kc-admin@example.com",
+      "realmRoles": [
+        "ADMIN"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local-demo-password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "kc-customer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Keycloak",
+      "lastName": "Customer",
+      "email": "kc-customer@example.com",
+      "realmRoles": [
+        "CUSTOMER"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local-demo-password",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "kc-driver",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Keycloak",
+      "lastName": "Driver",
+      "email": "kc-driver@example.com",
+      "realmRoles": [
+        "DRIVER"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "local-demo-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
