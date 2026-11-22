@@ -1,4 +1,20 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4.3.6-management
+    container_name: lab4-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: vros
+      RABBITMQ_DEFAULT_PASS: vros-password
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - lab4-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
   db:
     image: postgres:16-alpine
     container_name: lab4-postgres
@@ -17,4 +33,5 @@ services:
       retries: 10
 
 volumes:
+  lab4-rabbitmq-data:
   lab4-postgres-data:

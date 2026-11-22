@@ -4,7 +4,76 @@ Spring Boot + Spring Data JPA project backed by PostgreSQL. Flyway applies versi
 
 The preferred API prefix is `/api/v2`. Explicit `/api/v1` routes and the original unversioned paths remain supported compatibility routes. Older examples below still work; see the version migration strategy at the end.
 
-The default `prod` profile keeps security enabled: list-all endpoints require ADMIN, vehicle/scenario reads by ID are public, customer/delivery reads by ID require a Bearer JWT, and POST/PUT require an ADMIN, CUSTOMER or DRIVER role, and DELETE requires ADMIN. In `dev`, list-all HTTP endpoints still require ADMIN; other endpoint authorization is bypassed. Public `POST /register` creates CUSTOMER accounts. Open Swagger, execute public `POST /login`, and paste the returned accessToken into Authorize → bearerAuth. Demo administrator credentials remain `student` / `lab-password`.
+The default `prod` profile keeps security enabled: list-all endpoints require ADMIN, vehicle/scenario reads by ID are public, customer/delivery reads by ID require a Bearer JWT, and POST/PUT require an ADMIN, CUSTOMER or DRIVER role, and DELETE requires ADMIN. In `dev`, all HTTP authorization, Bearer-token filtering and method security are bypassed. Public `POST /register` creates CUSTOMER accounts. Open Swagger, execute public `POST /login`, and paste the returned accessToken into Authorize → bearerAuth. Demo administrator credentials remain `student` / `lab-password`.
+
+## DDD layers and explicit CQRS
+
+The API uses a .NET-style Clean Architecture layout with explicit command/query objects and one matching handler per use case. The previous CommandService/QueryService facades have been removed. Existing resource routes remain; optimization jobs add dedicated submit/status/solution routes, a Flyway job table, and route data in the shared RabbitMQ result contract.
+
+```text
+lab4/src/main/java/com/example/lab4/
+  api/
+    controllers/    Map HTTP requests to commands/queries
+    middleware/     Exception mapping, ETags and API versioning
+    mapping/        HATEOAS response mapping
+    configuration/  HTTP security, Swagger and MVC wiring
+  application/
+    commands/
+      vehicles/     CreateVehicleCommand + CreateVehicleCommandHandler
+                    UpdateVehicleCommand + UpdateVehicleCommandHandler
+                    DeleteVehicleCommand + DeleteVehicleCommandHandler
+      customers/    Customer command/handler pairs
+      deliveries/   Delivery command/handler pairs
+      scenarios/    Scenario and optimization command/handler pairs
+      authentication/ Login, register, refresh and logout pairs
+      users/        User credential and administrator command/handler pairs
+      drivers/      Driver command/handler pairs
+      depots/       Depot command/handler pairs
+    queries/
+      vehicles/     GetVehicleByIdQuery + GetVehicleByIdQueryHandler
+                    GetVehiclesQuery + GetVehiclesQueryHandler
+      customers/    Customer query/handler pairs, including cached email lookup
+      deliveries/   Delivery query/handler pairs, including Criteria searches
+      scenarios/    Scenario query/handler pairs
+      users/        User query/handler pairs
+      drivers/      Driver query/handler pairs
+      depots/       Depot query/handler pairs
+    cqrs/           Command<R>, Query<R>, handler interfaces and dispatchers
+    dto/            Validated request/response contracts
+    interfaces/     Persistence, messaging and security abstractions
+    exceptions/     Application failures
+  domain/
+    entities/       Business entities and their existing behavior/invariants
+    enums/          Role
+    valueobjects/   DeliverySearchCriteria
+  infrastructure/
+    persistence/    JPA repository implementations, JPQL and Criteria API
+    messaging/      RabbitMQ adapters
+    security/       BCrypt, credentials and JWT implementations
+    configuration/  Adapter wiring
+    bootstrap/      Demo accounts and DataFaker initialization
+```
+
+A command describes an action; its handler contains the write logic and transaction. A query describes a read; its handler executes in a read-only transaction. The application uses the existing PostgreSQL database for both sides. Commands may load current state before applying domain behavior. Query results are typed through Query<R>, and command results through Command<R>.
+
+For example, VehicleController dispatches:
+
+```java
+commands.execute(new CreateVehicleCommand(request));
+queries.execute(new GetVehicleByIdQuery(id));
+```
+
+CommandBus and QueryBus are small in-process dispatchers. They choose the matching Spring-managed CommandHandler/QueryHandler by message type and call handle(...). Duplicate registrations and missing handlers fail explicitly. Calls go through Spring proxies, preserving transactions, validation and caching. There is no service-facade call between the dispatcher and handler.
+
+CreateVehicleCommandHandler owns creation; UpdateVehicleCommandHandler owns updates; GetVehicleByIdQueryHandler owns reading the response. Controller routes and authorization annotations are unchanged. Customer queries keep the email cache, and customer command handlers evict it on writes. Login/register/refresh/logout are commands because they create or change authentication state; their handlers use application interfaces for credentials, password hashing, token issuance and persistence.
+
+The domain retains JPA mappings so existing associations, Flyway history and Hibernate validation continue to work. Application handlers depend on plain repository and messaging/security interfaces, implemented by infrastructure. Bootstrap and JMH code use the same typed commands/queries instead of old services.
+
+The worker receives an integration event in its Rabbit listener, wraps it in AcceptOptimizationRequestCommand, and passes it to AcceptOptimizationRequestCommandHandler.handle(...). That handler uses OptimizationJob and AcknowledgmentPublisher. The RabbitMQ wire records and queue names remain in com.example.vros.messaging in both independent projects.
+
+Run/build commands are unchanged. Tests cover handler dispatch, transaction metadata, interface boundaries, cache invalidation across command/query handlers, authorization, and worker acknowledgment behavior.
+
+The earlier explicit-CQRS verification predates persisted optimization jobs and the route-result/DLQ contract. These changes add Flyway migration V8 and keep the shared messaging records synchronized between the API and Worker.
 
 ## Run
 
@@ -15,7 +84,7 @@ docker compose up -d
 
 The `db` service exposes PostgreSQL on `localhost:5432` with database/user/password `lab4`. The application uses those settings by default and can be pointed elsewhere with `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`.
 
-On startup, a `CommandLineRunner` exercises all five services by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. With `dev`, DataFaker also creates 10 depots, 50 drivers and vehicles, 1,000 customers, and 3,000 deliveries on the first run. Existing generated customer emails are skipped on restart. Increasing `APP_SEED_CUSTOMERS` adds the missing generated customers and their deliveries without duplicating the existing batch. The demo customer and manually created customers are additional to this generated customer target; lowering the target does not delete data. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
+On startup, a `CommandLineRunner` dispatches bootstrap commands and queries by finding or creating a demo depot, driver, vehicle, customer, and delivery, then prints their IDs. With `dev`, DataFaker also creates 10 depots, 50 drivers and vehicles, 1,000 customers, and 3,000 deliveries on the first run. Existing generated customer emails are skipped on restart. Increasing `APP_SEED_CUSTOMERS` adds the missing generated customers and their deliveries without duplicating the existing batch. The demo customer and manually created customers are additional to this generated customer target; lowering the target does not delete data. Configure the counts with `APP_SEED_DEPOTS`, `APP_SEED_VEHICLES`, `APP_SEED_CUSTOMERS`, and `APP_SEED_DELIVERIES_PER_CUSTOMER`; set `APP_SEED_ENABLED=false` to disable generated data.
 
 ## Routing scenarios
 
@@ -27,10 +96,10 @@ Persist vehicles and deliveries first, then select them for a scenario inside a 
 Scenario scenario = new Scenario("Morning routing problem");
 scenario.addVehicle(vehicle);
 scenario.addDelivery(delivery);
-scenarioService.save(scenario);
+commands.execute(new SaveScenarioCommand(scenario));
 ```
 
-`ScenarioRepository` provides JPA persistence and `ScenarioService` provides find, save and delete operations. Use `addVehicle`, `removeVehicle`, `addDelivery`, and `removeDelivery` to edit membership. Access the lazy sets inside a transaction. Deleting a scenario removes its join-table rows while preserving shared vehicles and deliveries; no JPA persist/remove cascades are configured for members. Membership does not assign a delivery to a particular vehicle or calculate routes.
+`ScenarioRepository` is the application persistence interface, implemented by `JpaScenarioRepository`. Each scenario action has its own command or query and matching handler. Use `addVehicle`, `removeVehicle`, `addDelivery`, and `removeDelivery` to edit membership. Access the lazy sets inside a transaction. Deleting a scenario removes its join-table rows while preserving shared vehicles and deliveries; no JPA persist/remove cascades are configured for members. Membership does not assign a delivery to a particular vehicle or calculate routes.
 
 With PostgreSQL running, `./mvnw -Dapp.seed.enabled=false test` runs `RoutingApiTests` against an HTTP server on a random port. It verifies CRUD, validation, missing references, failed scenario updates, shared membership, and safe deletion. Test resources are cleaned up after execution.
 
@@ -81,13 +150,13 @@ Also check error responses through **Try it out**: submit a blank name or invali
 - **Derived query:** `UserRepository.findByEmailAndRole` looks up a customer by its unique email.
 - **JPQL query:** `VehicleRepository.findAvailableAtDepot` lists available vehicles assigned to a depot.
 - **Transactional modifying query:** `VehicleRepository.updateAvailability` updates a vehicle's availability by ID and returns the number of affected rows. It runs inside a transaction and clears/flushes the persistence context around the bulk update.
-- **Criteria API search:** `DeliveryService.search(DeliverySearchCriteria)` supports any combination of customer ID, area text matched against customer address or coordinates, quantity greater than a threshold, minimum/maximum quantity, case-insensitive notes text, timestamp bounds, and a specific registration date. Date-only searches use UTC day boundaries. Null or blank text filters are ignored, and results are ordered newest first.
+- **Criteria API search:** `SearchDeliveriesQuery` / `SearchDeliveriesQueryHandler` supports any combination of customer ID, area text matched against customer address or coordinates, quantity greater than a threshold, minimum/maximum quantity, case-insensitive notes text, timestamp bounds, and a specific registration date. Date-only searches use UTC day boundaries. Null or blank text filters are ignored, and results are ordered newest first.
 
-Example: `deliveryService.search(new DeliverySearchCriteria(customerId, "Bucharest", 10, null, null, null, null, null, registeredOn))` returns deliveries for that customer, in an area matching “Bucharest”, with quantity greater than 10 and registered on that UTC date. Pass `null` for any filter you want to omit.
+Example: `queries.execute(new SearchDeliveriesQuery(new DeliverySearchCriteria(customerId, "Bucharest", 10, null, null, null, null, null, registeredOn)))` returns deliveries for that customer, in an area matching “Bucharest”, with quantity greater than 10 and registered on that UTC date. Pass `null` for any filter you want to omit.
 
 ## Customer lookup cache and benchmark
 
-`CustomerService.findByEmail` is cached in Caffeine (`customersByEmail`) with a 10-minute write expiry and a maximum of 10,000 entries. Customer saves and deletes evict the cache so later lookups cannot return stale records.
+`FindCustomerByEmailQueryHandler.handle` is cached in Caffeine (`customersByEmail`) with a 10-minute write expiry and a maximum of 10,000 entries. Customer saves and deletes evict the cache so later lookups cannot return stale records.
 
 To measure cached service reads against uncached repository reads, start PostgreSQL and run:
 
@@ -324,7 +393,7 @@ Successful authenticated API GET responses use private revalidation and vary by 
 
 All contact fields, optional address/coordinates, the deliveries collection, and the vehicle relationship are declared on User. Create domain identities with `User.customer(...)`, `User.driver(...)`, or `new User(name, email, phone)` for ADMIN. Roles have no public setter. `updateCustomerDetails` requires CUSTOMER, delivery construction requires CUSTOMER, and assigning a vehicle driver requires DRIVER.
 
-`UserRepository` is the only user repository. `CustomerService` and `DriverService` remain logical role-specific services, using explicit `findByIdAndRole`, `findByEmailAndRole`, and `findAllByRole` queries. They reject saves for the wrong role and scope updates/deletes so that a driver/admin ID cannot be treated as a customer. Customer caching and eviction remain in CustomerService. The customer REST DTOs/routes and HATEOAS links are unchanged.
+`UserRepository` is the only user repository. Customer and driver command/query handlers provide separate read/write use cases, using explicit `findByIdAndRole`, `findByEmailAndRole`, and `findAllByRole` queries. They reject saves for the wrong role and scope updates/deletes so that a driver/admin ID cannot be treated as a customer. Customer queries own caching; customer commands evict it after mutations. The customer REST DTOs/routes and HATEOAS links are unchanged.
 
 Delivery relationships and Criteria API joins now target User directly. The delivery service resolves only CUSTOMER users, while database constraints still require CUSTOMER delivery references and DRIVER vehicle assignments. Required customer address/coordinates, per-role email uniqueness, unique driver phone numbers, and driver-deletion unassignment remain enforced.
 
@@ -349,7 +418,7 @@ The one-time `DemoAccountInitializer` configures these database rows by default:
 
 The existing APP_SECURITY_USERNAME / APP_SECURITY_PASSWORD options configure the administrator's first bootstrap. APP_SECURITY_CUSTOMER_USERNAME/PASSWORD and APP_SECURITY_DRIVER_USERNAME/PASSWORD configure the other two initial logins. APP_SECURITY_BOOTSTRAP_ENABLED=false disables this initializer. These settings are initial provisioning inputs: restarting does not reset passwords, rename existing logins, or re-enable disabled accounts. Domain/DataFaker seeding remains separate; generated users are not all given a shared password.
 
-For other users, the internal `UserService.configureLogin(id, username, rawPassword)` encodes the password before storing it and enables login; `disableLogin(id)` disables it without deleting the domain identity. No public credential-management endpoint is added. Customer request DTOs cannot set username, password, enabled, or role. Password hashes are omitted from serialization and are never included in REST DTOs.
+For other users, the internal `ConfigureUserLoginCommand(id, username, rawPassword)` encodes the password before storing it and enables login; `DisableUserLoginCommand(id)` disables it without deleting the domain identity. No public credential-management endpoint is added. Customer request DTOs cannot set username, password, enabled, or role. Password hashes are omitted from serialization and are never included in REST DTOs.
 
 Sign in through /login using any of the three configured database logins. JWT roles become Spring authorities, and `hasAnyRole("ADMIN", "CUSTOMER", "DRIVER")` permits any application role before a controller executes.
 
@@ -376,7 +445,7 @@ Customer and delivery reads stay protected because they expose contact details o
 
 A successful response includes accessToken, tokenType (Bearer), expiresIn (900 seconds by default), expiresAt, username, and role. Bad credentials and disabled accounts return 401; invalid bodies return 400. GET /login returns JSON usage instructions; POST /login is the public authentication endpoint.
 
-`LoginService` authenticates through the database-backed DaoAuthenticationProvider and signs an HS256 JWT. Claims include sub (username), uid (user ID), roles, iss, aud, iat, nbf, exp, and jti. No password or password hash is included. `JwtConfiguration` validates the signature with an explicitly selected algorithm, issuer, audience, timestamps, and required identity/role claims. Spring maps roles to ROLE_ADMIN, ROLE_CUSTOMER, or ROLE_DRIVER.
+`LoginCommandHandler` authenticates through the CredentialsAuthenticator port, implemented by DatabaseCredentialsAuthenticator using DaoAuthenticationProvider. AccessTokenIssuer is implemented by LocalJwtAccessTokenIssuer, which signs an HS256 JWT. Claims include sub (username), uid (user ID), roles, iss, aud, iat, nbf, exp, and jti. No password or password hash is included. `JwtConfiguration` validates the signature with an explicitly selected algorithm, issuer, audience, timestamps, and required identity/role claims. Spring maps roles to ROLE_ADMIN, ROLE_CUSTOMER, or ROLE_DRIVER.
 
 Send the token in the Authorization header as `Bearer <accessToken>` for protected API requests. Missing, malformed, expired, incorrectly signed, or invalid-claim tokens return 401. HTTP Basic credentials no longer grant API access. Access tokens carry a role snapshot and remain valid until expiry even if the account is later disabled or its role/password changes. Refresh tokens rotate and recheck the current account, password fingerprint, and role; see the access/refresh section below. Re-authentication checks the latest database state. Spring permits a small clock-skew allowance during timestamp validation.
 
@@ -408,7 +477,7 @@ For a stable local key, generate it outside source control, for example `export 
 
 A successful registration returns 201 with `id`, `username`, and `role: CUSTOMER`. It creates an enabled user in the existing `users` table, including the required customer contact details. Role, ID, enabled status, and password hash are chosen by the server, never copied from request fields. Registration does not claim or enable an existing customer identity. ADMIN and DRIVER accounts continue to be provisioned internally.
 
-`RegistrationService` uses the same injected PasswordEncoder as login and account provisioning. The delegating encoder defaults to BCrypt with cost 10, producing a fresh random salt for every password and storing only `{bcrypt}$2...` in `users.password_hash`. Login calls `matches` through DaoAuthenticationProvider; raw passwords are never saved or returned. No schema migration is required because V6 already provides the credentials columns.
+`RegisterUserCommandHandler` uses the PasswordHasher port, implemented by BCryptPasswordHasher over the same PasswordEncoder used by login and account provisioning. The delegating encoder defaults to BCrypt with cost 10, producing a fresh random salt for every password and storing only `{bcrypt}$2...` in `users.password_hash`. Login calls `matches` through DaoAuthenticationProvider; raw passwords are never saved or returned. No schema migration is required because V6 already provides the credentials columns.
 
 Bean Validation requires usernames of 3–64 ASCII letters/digits/dots/underscores/hyphens, a password of at least 8 characters and at most 72 UTF-8 bytes (BCrypt's limit), valid email, and the required customer details. Usernames and email uniqueness follow the existing case-sensitive database rules; email is unique within CUSTOMER users. Missing/malformed/invalid input returns 400. An existing username or customer email returns 409; database constraints also prevent concurrent duplicate registration. Successful registration evicts the customer email cache so a previously cached missing customer becomes visible.
 
@@ -430,9 +499,9 @@ Run `./mvnw test` inside lab4. `MethodSecurityTest` checks real Spring controlle
 
 | Behavior | dev | prod (default) |
 | --- | --- | --- |
-| HTTP authorization | List-all endpoints require a valid ADMIN JWT; other routes are permitted | JWT authentication and existing role rules |
+| HTTP authorization | All endpoints permitted; no JWT filter | JWT authentication and existing role rules |
 | Method authorization | Disabled, including class-level and method-level @PreAuthorize | Enabled |
-| Swagger/OpenAPI | Public; list-all operations document ADMIN authentication | Public; API authentication and role requirements documented |
+| Swagger/OpenAPI | Public; every operation documented without authentication | Public; API authentication and role requirements documented |
 | Bulk DataFaker seed | On by default | Off by default |
 | Demo login bootstrap | On by default | Off by default |
 
@@ -450,7 +519,9 @@ java -jar target/lab4-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
 java -jar target/lab4-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 ```
 
-Alternatively set `SPRING_PROFILES_ACTIVE=dev` or `prod` in the environment or the IDE's active profiles. In dev, open `http://localhost:8080/swagger-ui/index.html` directly. List-all operations require login and an ADMIN access token; other endpoints can be called without signing in. Database constraints and Bean Validation still apply, registration still hashes passwords, and POST /login still verifies credentials when explicitly called.
+Alternatively set `SPRING_PROFILES_ACTIVE=dev` or `prod` in the environment or the IDE's active profiles. In dev, open `http://localhost:8080/swagger-ui/index.html` directly. All API operations, including list-all and DELETE, can be called without signing in. Database constraints and Bean Validation still apply, registration still hashes passwords, and POST /login still verifies credentials when explicitly called.
+
+The full dev bypass was verified with anonymous collection GET/HEAD and vehicle POST/PUT/DELETE, including requests carrying invalid Bearer tokens. Prod still rejects anonymous protected calls and requires ADMIN for lists/deletes. The build/test suite passed, along with 117 live profile checks.
 
 `DevSecurityConfiguration` is active only for `dev & !prod`. `SecurityConfiguration` and `MethodSecurityConfiguration` use `!dev | prod`, keeping authorization on when no dev profile is selected or when both dev and prod are accidentally active. A permit-all HTTP chain alone would not bypass @PreAuthorize; excluding the method-security configuration is also required.
 
@@ -495,13 +566,23 @@ Settings:
 
 `JwtConfiguration` selects between two fixed validators by issuer; an unverified issuer never supplies a network URL. Local tokens use HS256 with identity/role/access-purpose checks. Keycloak access tokens use RS256, the configured realm's JWKS, exact issuer, API audience, expiry/subject validation, and the Bearer access-token purpose. ID and refresh tokens cannot be used as API access tokens. `ApplicationJwtAuthoritiesConverter` maps only ADMIN/CUSTOMER/DRIVER from `realm_access.roles` and `resource_access[OIDC_AUDIENCE].roles` to Spring ROLE_ authorities. Other clients' roles and arbitrary role names do not grant privileges. Existing HTTP and @PreAuthorize rules apply equally to local and Keycloak access tokens.
 
-Keycloak identities remain IdP-managed; they are not matched to local users by email and are not automatically inserted into the domain users table. Local registration, BCrypt credentials, customers/drivers, and local login remain available independently. The dev profile bypasses general authorization, but its HTTP chain validates Bearer tokens and requires ADMIN for collection list-all reads.
+Keycloak identities remain IdP-managed; they are not matched to local users by email and are not automatically inserted into the domain users table. Local registration, BCrypt credentials, customers/drivers, and local login remain available independently. The dev profile bypasses HTTP authorization and JWT validation entirely; method security is disabled too.
 
 Swagger documents login/register/refresh/logout under the **Authentication** tag in both v1 and v2 and adds a Keycloak authorization-code scheme when configured. Swagger is public; use bearerAuth for manually copied local access tokens or the keycloak OAuth client for PKCE sign-in.
 
 Implementation references: [Keycloak OIDC endpoints](https://www.keycloak.org/securing-apps/oidc-layers), [Keycloak Docker/import](https://www.keycloak.org/server/containers), [Swagger OAuth/PKCE configuration](https://swagger.io/docs/open-source-tools/swagger-ui/usage/oauth2/).
 Verification of the simplified flow: 35 automated tests and 75 live API checks passed. Public Swagger and POST /login, create/update for all three application roles, non-admin delete rejection, and ADMIN deletion were verified. The browser workflow was also tested by logging in through Swagger and pasting the returned access token into the selected v2 definition, then receiving 200 from a protected customer GET. The custom page is absent from the clean packaged artifact. Disposable CRUD resources and temporary servers were removed afterward.
 
-List-all authorization verification passed 43 automated tests and 124 live checks. Collection GET/HEAD requests across `/api`, `/api/v1`, and `/api/v2` return 401 anonymously, 403 for CUSTOMER/DRIVER, and 200 for ADMIN, including requests with query parameters. Individual-resource access and public Swagger were preserved. The dev profile now enforces the same HTTP list-all restriction, while bypassing other endpoint authorization.
+## Scenario optimization messaging
 
-List-all rules apply to both dev and prod: anonymous GET/HEAD collections return 401, non-admin tokens return 403, and ADMIN tokens succeed. In dev this exception is enforced by the HTTP filter chain; general @PreAuthorize enforcement remains disabled for the development bypass. The test suite passed 49 tests, including dev GET/HEAD collection checks across all API versions and verification that other dev routes still allow anonymous access.
+RabbitMQ is included in `docker-compose.yml`; start it with `docker compose up -d --wait rabbitmq` (or start both dependencies with `docker compose up -d --wait db rabbitmq`). AMQP uses localhost:5672; management UI is http://localhost:15672 with local credentials `vros` / `vros-password`. RabbitMQ data uses a named Docker volume.
+
+The separate [OptimizationWorker](../OptimizationWorker/README.md) Spring Boot project consumes scenario requests and publishes solved routes. Run it with `./mvnw spring-boot:run` from its directory, alongside VROS.
+
+Submit an existing scenario using **POST /api/optimization-jobs** with `{"scenarioId": 1}` (or **POST /api/v2/scenarios/{id}/solve**). VROS returns **202** with a request ID. Poll **GET /api/optimization-jobs/{requestId}/status** and retrieve **GET /api/optimization-jobs/{requestId}/solution** when complete. Jobs and route results are persisted in PostgreSQL. OptimizationWorker publishes `SOLVED` or `UNROUTABLE` results to `vros.optimization.acknowledgments`; VROS consumes the result and updates the corresponding job.
+
+The endpoint is also available under v1 and the legacy API prefix and follows existing POST role permissions. Missing scenarios return 404, and messaging failures return 503. Broker connection settings in both projects can be overridden with RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USERNAME and RABBITMQ_PASSWORD.
+
+Both applications declare durable queues and the direct exchange `vros.optimization`, using the routing keys `optimization.requested` and `optimization.acknowledged`. Worker requests use `vros.optimization.requests.v2`; after three configurable attempts, rejected failures route through `vros.optimization.dlx` to `vros.optimization.requests.dlq`. The Worker logs dead-letter metadata and publishes a correlated `FAILED` result when it can decode the request. See the worker README for retry settings and run commands. Implementation uses [Spring AMQP](https://spring.io/guides/gs/messaging-rabbitmq/) and the official [RabbitMQ management image](https://www.rabbitmq.com/docs/management).
+
+The earlier real-broker verification predates persisted job status, route-result storage, and the request DLQ. Current changes compile in both projects; the Worker retry/DLQ tests and API job-service tests pass. A live PostgreSQL/RabbitMQ end-to-end run remains to be performed for these additions.

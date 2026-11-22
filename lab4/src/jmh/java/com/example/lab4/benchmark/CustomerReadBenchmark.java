@@ -1,10 +1,12 @@
 package com.example.lab4.benchmark;
 
+import com.example.lab4.application.cqrs.QueryBus;
+import com.example.lab4.application.queries.customers.FindCustomerByEmailQuery;
 import com.example.lab4.Lab4Application;
-import com.example.lab4.entity.User;
-import com.example.lab4.entity.Role;
-import com.example.lab4.repository.UserRepository;
-import com.example.lab4.service.CustomerService;
+import com.example.lab4.domain.entities.User;
+import com.example.lab4.domain.enums.Role;
+import com.example.lab4.application.interfaces.UserRepository;
+
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -36,7 +38,7 @@ public class CustomerReadBenchmark {
         private static final String EMAIL = "demo@example.com";
 
         private ConfigurableApplicationContext context;
-        private CustomerService customerService;
+        private QueryBus customerService;
         private UserRepository customerRepository;
 
         @Setup(Level.Trial)
@@ -44,15 +46,15 @@ public class CustomerReadBenchmark {
             context = new SpringApplicationBuilder(Lab4Application.class)
                     .web(WebApplicationType.NONE)
                     .run("--app.seed.enabled=false", "--logging.level.root=WARN");
-            customerService = context.getBean(CustomerService.class);
+            customerService = context.getBean(QueryBus.class);
             customerRepository = context.getBean(UserRepository.class);
-            customerService.findByEmail(EMAIL).orElseThrow(
+            customerService.execute(new FindCustomerByEmailQuery(EMAIL)).orElseThrow(
                     () -> new IllegalStateException("Demo customer is missing; start PostgreSQL and run the app once first."));
         }
 
         @Setup(Level.Iteration)
         public void warmCache() {
-            customerService.findByEmail(EMAIL).orElseThrow();
+            customerService.execute(new FindCustomerByEmailQuery(EMAIL)).orElseThrow();
         }
 
         @TearDown(Level.Trial)
@@ -63,7 +65,7 @@ public class CustomerReadBenchmark {
 
     @Benchmark
     public User cachedServiceRead(SpringState state) {
-        return state.customerService.findByEmail(SpringState.EMAIL).orElseThrow();
+        return state.customerService.execute(new FindCustomerByEmailQuery(SpringState.EMAIL)).orElseThrow();
     }
 
     @Benchmark
