@@ -1,62 +1,33 @@
 package com.example.optimizationworker.infrastructure.messaging;
 
-import com.example.optimizationworker.application.commands.AcceptOptimizationRequestCommandHandler;
-import com.example.optimizationworker.application.commands.AcceptOptimizationRequestCommand;
+import com.example.optimizationworker.application.commands.OptimizationRequestProcessor;
 import com.example.vros.messaging.OptimizationQueues;
 import com.example.vros.messaging.OptimizationRequest;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Value;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class OptimizationRequestListener {
-    private static final Logger log = LoggerFactory.getLogger(OptimizationRequestListener.class);
-    private final AcceptOptimizationRequestCommandHandler handler;
-    private final int maxAttempts;
-    private final long retryDelayMillis;
+    private final OptimizationRequestProcessor processor;
 
-    public OptimizationRequestListener(AcceptOptimizationRequestCommandHandler handler,
-                                       @Value("${optimization.worker.retry.max-attempts:3}") int maxAttempts,
-                                       @Value("${optimization.worker.retry.delay-ms:200}") long retryDelayMillis) {
-        if (maxAttempts < 1 || retryDelayMillis < 0) throw new IllegalArgumentException("Invalid retry configuration");
-        this.handler = handler;
-        this.maxAttempts = maxAttempts;
-        this.retryDelayMillis = retryDelayMillis;
-    }
+    public OptimizationRequestListener(OptimizationRequestProcessor processor) { this.processor = processor; }
 
-    @RabbitListener(queues = OptimizationQueues.REQUESTS)
-    public void receive(OptimizationRequest request) {
-        if (request == null) throw new AmqpRejectAndDontRequeueException("Invalid optimization request");
-        var command = new AcceptOptimizationRequestCommand(request);
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                handler.handle(command);
-                return;
-            } catch (IllegalArgumentException exception) {
-                throw new AmqpRejectAndDontRequeueException("Invalid optimization request", exception);
-            } catch (RuntimeException exception) {
-                if (attempt == maxAttempts) {
-                    log.error("Optimization request exhausted retries: requestId={}, attempts={}",
-                            request.requestId(), attempt, exception);
-                    throw new AmqpRejectAndDontRequeueException("Optimization request failed after retries", exception);
-                }
-                log.warn("Optimization request failed; retrying: requestId={}, attempt={}/{}",
-                        request.requestId(), attempt, maxAttempts);
-                pauseBeforeRetry(attempt);
-            }
+    @RabbitListener(queues = OptimizationQueues.REQUESTS,
+            concurrency = "${optimization.worker.pool-size:4}", ackMode = "MANUAL")
+    public CompletableFuture<Void> receive(OptimizationRequest request) {
+        if (request == null) {
+            return CompletableFuture.failedFuture(new AmqpRejectAndDontRequeueException("Invalid optimization request"));
         }
-    }
-
-    private void pauseBeforeRetry(int attempt) {
-        if (retryDelayMillis == 0) return;
         try {
-            Thread.sleep(Math.multiplyExact(retryDelayMillis, attempt));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new AmqpRejectAndDontRequeueException("Interrupted while retrying optimization request", exception);
+            // Keep the delivery unacknowledged until the background computation completes.
+            return processor.process(request);
+        } catch (TaskRejectedException exception) {
+            return CompletableFuture.failedFuture(new AmqpRejectAndDontRequeueException(
+                    "Optimization worker thread pool is full", exception));
         }
     }
 }

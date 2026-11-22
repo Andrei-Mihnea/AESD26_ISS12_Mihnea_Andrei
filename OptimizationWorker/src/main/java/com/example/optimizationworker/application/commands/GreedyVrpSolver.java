@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /** Builds capacity-constrained tours by repeatedly visiting the nearest feasible unassigned delivery. */
 @Component
@@ -17,6 +18,10 @@ public class GreedyVrpSolver {
     private static final double EARTH_RADIUS_KM = 6_371.0088;
 
     public Optional<List<VehicleRoute>> solve(OptimizationJob job) {
+        return solve(job, (completed, total) -> {});
+    }
+
+    public Optional<List<VehicleRoute>> solve(OptimizationJob job, BiConsumer<Integer, Integer> progress) {
         // Use high-capacity vehicles first so large-demand deliveries remain assignable.
         List<OptimizationJob.Vehicle> vehicles = job.vehicles().stream()
                 .sorted(Comparator.comparingInt(OptimizationJob.Vehicle::capacity).reversed()
@@ -60,6 +65,7 @@ public class GreedyVrpSolver {
                 totalDemand += next.delivery().demand();
                 stops.add(next.delivery().id());
                 unassigned.remove(next);
+                progress.accept(deliveries.size() - unassigned.size(), deliveries.size());
             }
 
             if (!stops.isEmpty()) {

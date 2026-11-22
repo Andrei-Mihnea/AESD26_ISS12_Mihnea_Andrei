@@ -1,46 +1,60 @@
-package com.example.optimizationworker.infrastructure.messaging;
+package com.example.optimizationworker.application.commands;
 
-import com.example.optimizationworker.application.commands.AcceptOptimizationRequestCommand;
-import com.example.optimizationworker.application.commands.AcceptOptimizationRequestCommandHandler;
 import com.example.vros.messaging.OptimizationRequest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-class OptimizationRequestListenerRetryTest {
+
+class OptimizationRequestProcessorRetryTest {
+    private final ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
     private final OptimizationRequest request = new OptimizationRequest(UUID.randomUUID(), 7L, "retry-test", Instant.now(), List.of(), List.of());
 
+    @AfterEach void closeExecutor() { executor.shutdown(); }
+
     @Test
-    void retriesTransientFailuresAndAcknowledgesAfterSuccessfulAttempt() {
+    void retriesTransientFailuresAndCompletesAfterSuccessfulAttempt() {
         var handler = new StubHandler(2, false);
+        var processor = processor(handler, 3);
 
-        new OptimizationRequestListener(handler, 3, 0).receive(request);
+        processor.processWithRetries(request);
 
-        org.junit.jupiter.api.Assertions.assertEquals(3, handler.calls);
+        assertEquals(3, handler.calls);
     }
 
     @Test
     void rejectsAfterConfiguredAttemptsSoRabbitCanDeadLetterTheMessage() {
         var handler = new StubHandler(Integer.MAX_VALUE, false);
+        var processor = processor(handler, 3);
 
-        assertThrows(AmqpRejectAndDontRequeueException.class,
-                () -> new OptimizationRequestListener(handler, 3, 0).receive(request));
+        assertThrows(AmqpRejectAndDontRequeueException.class, () -> processor.processWithRetries(request));
 
-        org.junit.jupiter.api.Assertions.assertEquals(3, handler.calls);
+        assertEquals(3, handler.calls);
     }
 
     @Test
     void doesNotRetryInvalidMessages() {
         var handler = new StubHandler(0, true);
+        var processor = processor(handler, 3);
 
-        assertThrows(AmqpRejectAndDontRequeueException.class,
-                () -> new OptimizationRequestListener(handler, 3, 0).receive(request));
+        assertThrows(AmqpRejectAndDontRequeueException.class, () -> processor.processWithRetries(request));
 
-        org.junit.jupiter.api.Assertions.assertEquals(1, handler.calls);
+        assertEquals(1, handler.calls);
+    }
+
+    private OptimizationRequestProcessor processor(StubHandler handler, int attempts) {
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(0);
+        executor.initialize();
+        return new OptimizationRequestProcessor(handler, new OptimizationWorkerMetrics(executor), attempts, 0);
     }
 
     private static final class StubHandler extends AcceptOptimizationRequestCommandHandler {
@@ -49,7 +63,7 @@ class OptimizationRequestListenerRetryTest {
         private int calls;
 
         private StubHandler(int failuresBeforeSuccess, boolean invalid) {
-            super(acknowledgment -> {}, new com.example.optimizationworker.application.commands.GreedyVrpSolver());
+            super(ack -> {}, new GreedyVrpSolver());
             this.failuresBeforeSuccess = failuresBeforeSuccess;
             this.invalid = invalid;
         }

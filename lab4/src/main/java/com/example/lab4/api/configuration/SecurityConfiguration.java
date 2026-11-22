@@ -43,6 +43,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.HEAD, "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/refresh", "/logout").permitAll()
                         .requestMatchers(HttpMethod.POST, "/register").permitAll()
+                        .requestMatchers("/ws", "/ws/**").permitAll()
                         // Collection rules must precede the broader public vehicle/scenario read rules.
                         .requestMatchers(HttpMethod.GET, ADMIN_LISTS).hasRole("ADMIN")
                         .requestMatchers(HttpMethod.HEAD, ADMIN_LISTS).hasRole("ADMIN")

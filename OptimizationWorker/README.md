@@ -15,7 +15,7 @@ com.example.optimizationworker/
   infrastructure/configuration/  RabbitMQ topology and JSON converter
 ```
 
-The Rabbit listener wraps the incoming event in AcceptOptimizationRequestCommand and calls its matching handler. The solver assigns each vehicle the nearest unassigned delivery that fits its remaining capacity, and estimates round-trip distance using Haversine distance between latitude/longitude coordinates. This deterministic heuristic produces feasible routes when all deliveries fit; it does not guarantee a globally shortest solution. The worker has no query API. Integration JSON records remain under `com.example.vros.messaging` in both projects so they share the same broker contract.
+The Rabbit listener returns a future and dispatches optimization with `@Async` to a fixed-size `ThreadPoolTaskExecutor`. Listener concurrency matches the pool size, and QoS prefetch bounds unacknowledged work; additional jobs remain queued at RabbitMQ while those slots are busy. The solver assigns each vehicle the nearest unassigned delivery that fits its remaining capacity and estimates round-trip distance using Haversine distance. This deterministic heuristic does not guarantee a globally shortest solution. Integration JSON records remain under `com.example.vros.messaging` in both projects so they share the same broker contract.
 
 ## Run
 
@@ -57,9 +57,12 @@ The endpoint also exists under `/api/scenarios/{id}/solve` and `/api/v1/scenario
 - Durable direct exchange: `vros.optimization`
 - Request routing key: `optimization.requested`; queue: `vros.optimization.requests.v2`
 - Acknowledgment routing key: `optimization.acknowledged`; queue: `vros.optimization.acknowledgments`
+- Progress routing key: `optimization.progress`; queue: `vros.optimization.progress`
 - Failed requests route through `vros.optimization.dlx` to `vros.optimization.requests.dlq` after configured retries.
 
 Worker retries transient request-processing failures up to `OPTIMIZATION_RETRY_MAX_ATTEMPTS` (default 3), with a linear delay of `OPTIMIZATION_RETRY_DELAY_MS` per attempt (default 200 ms). Invalid requests are rejected immediately. Exhausted failures are dead-lettered; the DLQ listener logs message ID, correlation ID, reason, and RabbitMQ `x-death` details, and publishes a correlated `FAILED` result when the request payload can be decoded.
+
+Set `OPTIMIZATION_WORKER_POOL_SIZE` to cap parallel optimizations (default 4) and `OPTIMIZATION_WORKER_PREFETCH` to set RabbitMQ QoS prefetch (default 1). The executor queue is bounded to available prefetch slots. Every `OPTIMIZATION_METRICS_INTERVAL_MS` (default 10 seconds), logs report completed/failed jobs per second, average duration, active threads, and queue depth. RabbitMQ Management also exposes ready/unacknowledged queue counts for broker-side throughput observation.
 
 Request JSON contains a request UUID, scenario ID/name, timestamp, selected vehicle IDs/capacities/depot coordinates, and delivery IDs/demands/customer coordinates. The request is a snapshot, so the worker does not query the API database. Result JSON contains requestId, scenarioId, status, acknowledgedAt, and routes. Each route contains vehicleId, deliveryIds in visit order, totalDemand, and estimated distanceKm. If no feasible assignment exists, status is `UNROUTABLE` and routes is empty.
 

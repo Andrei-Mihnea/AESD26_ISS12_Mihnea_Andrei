@@ -17,10 +17,12 @@ public class OptimizationMessagingConfiguration {
                 "x-dead-letter-exchange", OptimizationQueues.DEAD_LETTER_EXCHANGE,
                 "x-dead-letter-routing-key", OptimizationQueues.DEAD_LETTER_KEY));
         Queue acknowledgments = new Queue(OptimizationQueues.ACKNOWLEDGMENTS, true);
+        Queue progress = new Queue(OptimizationQueues.PROGRESS_QUEUE, true);
         Queue deadLetters = new Queue(OptimizationQueues.DEAD_LETTER_QUEUE, true);
-        return new Declarables(exchange, deadLetterExchange, requests, acknowledgments, deadLetters,
+        return new Declarables(exchange, deadLetterExchange, requests, acknowledgments, progress, deadLetters,
                 BindingBuilder.bind(requests).to(exchange).with(OptimizationQueues.REQUEST_KEY),
                 BindingBuilder.bind(acknowledgments).to(exchange).with(OptimizationQueues.ACK_KEY),
+                BindingBuilder.bind(progress).to(exchange).with(OptimizationQueues.PROGRESS_KEY),
                 BindingBuilder.bind(deadLetters).to(deadLetterExchange).with(OptimizationQueues.DEAD_LETTER_KEY));
     }
 

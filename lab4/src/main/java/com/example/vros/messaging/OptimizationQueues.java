@@ -8,6 +8,8 @@ public final class OptimizationQueues {
     public static final String DEAD_LETTER_EXCHANGE = "vros.optimization.dlx";
     public static final String DEAD_LETTER_QUEUE = "vros.optimization.requests.dlq";
     public static final String DEAD_LETTER_KEY = "optimization.request.failed";
+    public static final String PROGRESS_QUEUE = "vros.optimization.progress";
+    public static final String PROGRESS_KEY = "optimization.progress";
     public static final String REQUEST_KEY = "optimization.requested";
     public static final String ACK_KEY = "optimization.acknowledged";
 }
