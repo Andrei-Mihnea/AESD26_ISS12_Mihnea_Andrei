@@ -1,6 +1,6 @@
-package com.example.lab4.application.interfaces;
+package com.example.lab4.optimization.application.ports;
 
-import com.example.lab4.domain.entities.OptimizationJobRecord;
+import com.example.lab4.optimization.domain.OptimizationJobRecord;
 
 import java.util.Optional;
 import java.util.UUID;

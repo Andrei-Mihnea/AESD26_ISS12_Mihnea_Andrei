@@ -1,11 +1,11 @@
-package com.example.lab4.api.controllers;
+package com.example.lab4.optimization.api;
 
-import com.example.lab4.application.commands.scenarios.SubmitScenarioOptimizationCommand;
+import com.example.lab4.optimization.application.SubmitScenarioOptimizationCommand;
 import com.example.lab4.application.cqrs.CommandBus;
-import com.example.lab4.application.dto.OptimizationJobStatusResponse;
-import com.example.lab4.application.dto.OptimizationJobSubmissionRequest;
-import com.example.lab4.application.dto.OptimizationSolutionResponse;
-import com.example.lab4.application.services.OptimizationJobService;
+import com.example.lab4.optimization.api.OptimizationJobStatusResponse;
+import com.example.lab4.optimization.api.OptimizationJobSubmissionRequest;
+import com.example.lab4.optimization.api.OptimizationSolutionResponse;
+import com.example.lab4.optimization.application.OptimizationJobService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,7 +27,7 @@ public class OptimizationJobsController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public com.example.lab4.application.dto.OptimizationSubmission submit(
+    public OptimizationSubmission submit(
             @Valid @RequestBody OptimizationJobSubmissionRequest request) {
         return commands.execute(new SubmitScenarioOptimizationCommand(request.scenarioId()));
     }

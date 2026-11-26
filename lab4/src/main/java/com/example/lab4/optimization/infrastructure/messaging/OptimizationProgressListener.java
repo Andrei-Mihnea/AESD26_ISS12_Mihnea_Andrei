@@ -1,4 +1,4 @@
-package com.example.lab4.infrastructure.messaging;
+package com.example.lab4.optimization.infrastructure.messaging;
 
 import com.example.vros.messaging.OptimizationProgressEvent;
 import com.example.vros.messaging.OptimizationQueues;

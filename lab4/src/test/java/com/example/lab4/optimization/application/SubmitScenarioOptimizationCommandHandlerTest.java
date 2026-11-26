@@ -1,4 +1,4 @@
-package com.example.lab4.application.commands.scenarios;
+package com.example.lab4.optimization.application;
 
 import com.example.lab4.domain.entities.*;
 import com.example.lab4.domain.valueobjects.*;
@@ -6,8 +6,8 @@ import com.example.lab4.domain.enums.*;
 import com.example.lab4.application.exceptions.ResourceNotFoundException;
 import com.example.lab4.application.interfaces.ScenarioRepository;
 import com.example.vros.messaging.*;
-import com.example.lab4.application.interfaces.OptimizationRequestPublisher;
-import com.example.lab4.application.services.OptimizationJobService;
+import com.example.lab4.optimization.application.ports.OptimizationRequestPublisher;
+import com.example.lab4.optimization.application.OptimizationJobService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;

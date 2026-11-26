@@ -1,8 +1,8 @@
-package com.example.lab4.api.controllers;
+package com.example.lab4.optimization.api;
 
-import com.example.lab4.application.commands.scenarios.SubmitScenarioOptimizationCommand;
+import com.example.lab4.optimization.application.SubmitScenarioOptimizationCommand;
 import com.example.lab4.application.cqrs.CommandBus;
-import com.example.lab4.application.dto.OptimizationSubmission;
+import com.example.lab4.optimization.api.OptimizationSubmission;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

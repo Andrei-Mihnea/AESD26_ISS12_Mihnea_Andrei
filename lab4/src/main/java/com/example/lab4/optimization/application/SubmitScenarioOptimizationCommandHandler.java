@@ -1,11 +1,11 @@
-package com.example.lab4.application.commands.scenarios;
+package com.example.lab4.optimization.application;
 
-import com.example.lab4.application.dto.OptimizationSubmission;
+import com.example.lab4.optimization.api.OptimizationSubmission;
 import com.example.lab4.application.exceptions.ResourceNotFoundException;
 import com.example.lab4.application.interfaces.ScenarioRepository;
 import com.example.vros.messaging.OptimizationRequest;
-import com.example.lab4.application.interfaces.OptimizationRequestPublisher;
-import com.example.lab4.application.services.OptimizationJobService;
+import com.example.lab4.optimization.application.ports.OptimizationRequestPublisher;
+import com.example.lab4.optimization.application.OptimizationJobService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;

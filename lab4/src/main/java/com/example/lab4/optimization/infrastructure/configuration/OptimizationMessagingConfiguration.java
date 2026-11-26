@@ -1,4 +1,4 @@
-package com.example.lab4.infrastructure.configuration;
+package com.example.lab4.optimization.infrastructure.configuration;
 
 import com.example.vros.messaging.OptimizationQueues;
 import org.springframework.amqp.core.*;

@@ -1,8 +1,8 @@
-package com.example.lab4.application.services;
+package com.example.lab4.optimization.application;
 
 import com.example.lab4.application.exceptions.OperationConflictException;
-import com.example.lab4.application.interfaces.OptimizationJobRepository;
-import com.example.lab4.domain.entities.OptimizationJobRecord;
+import com.example.lab4.optimization.application.ports.OptimizationJobRepository;
+import com.example.lab4.optimization.domain.OptimizationJobRecord;
 import com.example.vros.messaging.OptimizationAcknowledgment;
 import org.junit.jupiter.api.Test;
 

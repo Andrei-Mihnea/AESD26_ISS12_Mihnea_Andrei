@@ -1,4 +1,4 @@
-package com.example.lab4.application.dto;
+package com.example.lab4.optimization.api;
 
 import com.example.vros.messaging.OptimizationAcknowledgment;
 import java.time.Instant;

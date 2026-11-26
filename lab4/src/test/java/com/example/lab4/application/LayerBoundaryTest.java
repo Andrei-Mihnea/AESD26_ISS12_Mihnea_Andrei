@@ -26,7 +26,7 @@ import com.example.lab4.application.commands.scenarios.CreateScenarioCommandHand
 import com.example.lab4.application.commands.scenarios.DeleteScenarioByIdCommandHandler;
 import com.example.lab4.application.commands.scenarios.DeleteScenarioCommandHandler;
 import com.example.lab4.application.commands.scenarios.SaveScenarioCommandHandler;
-import com.example.lab4.application.commands.scenarios.SubmitScenarioOptimizationCommandHandler;
+import com.example.lab4.optimization.application.SubmitScenarioOptimizationCommandHandler;
 import com.example.lab4.application.commands.scenarios.UpdateScenarioCommandHandler;
 import com.example.lab4.application.commands.users.ConfigureUserLoginCommandHandler;
 import com.example.lab4.application.commands.users.CreateAdministratorCommandHandler;

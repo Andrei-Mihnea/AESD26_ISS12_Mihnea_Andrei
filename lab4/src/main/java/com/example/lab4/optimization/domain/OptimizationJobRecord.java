@@ -1,4 +1,4 @@
-package com.example.lab4.domain.entities;
+package com.example.lab4.optimization.domain;
 
 import com.example.vros.messaging.OptimizationAcknowledgment;
 import jakarta.persistence.Column;

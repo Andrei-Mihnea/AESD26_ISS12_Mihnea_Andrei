@@ -1,8 +1,8 @@
-package com.example.lab4.infrastructure.messaging;
+package com.example.lab4.optimization.infrastructure.messaging;
 
 import com.example.vros.messaging.OptimizationAcknowledgment;
 import com.example.vros.messaging.OptimizationQueues;
-import com.example.lab4.application.services.OptimizationJobService;
+import com.example.lab4.optimization.application.OptimizationJobService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;

@@ -24,7 +24,7 @@ lab4/src/main/java/com/example/lab4/
                     DeleteVehicleCommand + DeleteVehicleCommandHandler
       customers/    Customer command/handler pairs
       deliveries/   Delivery command/handler pairs
-      scenarios/    Scenario and optimization command/handler pairs
+      scenarios/    Scenario CRUD command/handler pairs
       authentication/ Login, register, refresh and logout pairs
       users/        User credential and administrator command/handler pairs
       drivers/      Driver command/handler pairs
@@ -53,6 +53,10 @@ lab4/src/main/java/com/example/lab4/
     configuration/  Adapter wiring
     bootstrap/      Demo accounts and DataFaker initialization
 ```
+
+## Spring Modulith capability package
+
+The optimization capability is organized as the top-level `com.example.lab4.optimization` package, with `api`, `application`, `domain`, and `infrastructure` subpackages. The shared scenario repository and CQRS bus remain in the existing application packages. `spring.modulith.detection-strategy=explicitly-annotated` keeps the existing technical-layer packages from being mistaken for business modules; `optimization/package-info.java` declares the module. Run `./mvnw test` to execute `ModularityVerificationTest`, which asserts the module is discovered and calls `ApplicationModules.verify()`.
 
 A command describes an action; its handler contains the write logic and transaction. A query describes a read; its handler executes in a read-only transaction. The application uses the existing PostgreSQL database for both sides. Commands may load current state before applying domain behavior. Query results are typed through Query<R>, and command results through Command<R>.
 

@@ -1,7 +1,7 @@
-package com.example.lab4.infrastructure.persistence;
+package com.example.lab4.optimization.infrastructure.persistence;
 
-import com.example.lab4.application.interfaces.OptimizationJobRepository;
-import com.example.lab4.domain.entities.OptimizationJobRecord;
+import com.example.lab4.optimization.application.ports.OptimizationJobRepository;
+import com.example.lab4.optimization.domain.OptimizationJobRecord;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;

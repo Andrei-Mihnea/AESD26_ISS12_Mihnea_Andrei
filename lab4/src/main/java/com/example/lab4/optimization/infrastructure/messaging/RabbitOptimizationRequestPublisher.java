@@ -1,6 +1,6 @@
-package com.example.lab4.infrastructure.messaging;
+package com.example.lab4.optimization.infrastructure.messaging;
 
-import com.example.lab4.application.interfaces.OptimizationRequestPublisher;
+import com.example.lab4.optimization.application.ports.OptimizationRequestPublisher;
 import com.example.vros.messaging.OptimizationRequest;
 import com.example.vros.messaging.OptimizationQueues;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
